@@ -35,6 +35,7 @@ canonical ownership. Cite documents here rather than copying their content.
 | `19_Pipeline_Improvement_Areas.md` | Open backlog items by ID (H3, M1–M3, PR1–PR5); fixed items for reference |
 | `20_Cloud_Infrastructure_Setup.md` | R2 + Oracle Cloud provisioning steps; architecture; status as of Feb 2026 |
 | `24_VPS_Setup_Procedure.md` | Step-by-step VPS rebuild procedure; known issues (PyKRX geo-block, uv run python) |
+| `25_GitHub_Repo_Assessment.md` | *(gitignored — local only)* Repo quality assessment and prioritized action items (Feb 2026) |
 
 ---
 
