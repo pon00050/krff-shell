@@ -122,7 +122,7 @@ class TestSchemaContracts:
 
     REQUIRED_COLUMNS = [
         "corp_code", "ticker", "company_name", "market", "year",
-        "fs_type", "expense_method",
+        "fs_type", "fs_type_shift", "expense_method",
         "receivables", "revenue", "cogs", "sga", "ppe",
         "depreciation", "total_assets", "lt_debt", "net_income", "cfo",
         "wics_sector_code", "ksic_code",
@@ -194,7 +194,7 @@ class TestSchemaContracts:
         """All rows should be KOSDAQ (Phase 1 scope)."""
         if "market" not in financials.columns:
             pytest.skip("market column not present")
-        unexpected = financials[~financials["market"].str.upper().str.contains("KOSDAQ", na=False)]
+        unexpected = financials[financials["market"] != "KOSDAQ"]
         assert len(unexpected) == 0, (
             f"{len(unexpected)} rows have unexpected market value: "
             f"{unexpected['market'].unique().tolist()}"
@@ -218,6 +218,40 @@ class TestSchemaContracts:
             f"Over 50% of rows are no_filing ({no_filing_pct:.1%}). "
             "Check Unicode fix in extract_dart.py (KI-003)."
         )
+
+    def test_no_duplicate_company_years(self, financials):
+        """Duplicate (corp_code, year) rows would corrupt Beneish lag calculations."""
+        dup_count = financials.duplicated(subset=["corp_code", "year"]).sum()
+        assert dup_count == 0, (
+            f"{dup_count} duplicate (corp_code, year) pairs found in company_financials"
+        )
+
+    def test_year_range(self, financials):
+        """Years must be 4-digit integers in a plausible DART data range (2000–2099).
+
+        Guards against parsing bugs like 20190 or 202, not against pipeline scope changes.
+        The Phase 1 run window (2019–2023) is enforced by the CLI, not this test.
+        """
+        bad = financials[~financials["year"].between(2000, 2099)]
+        assert len(bad) == 0, (
+            f"{len(bad)} rows have implausible year values: {bad['year'].unique().tolist()}"
+        )
+
+    def test_fs_type_shift_correctness(self, financials):
+        """fs_type_shift=True must only appear for corps with >1 distinct fs_type."""
+        mixed_corps = set(financials[financials["fs_type_shift"]]["corp_code"])
+        uniform_corps = set(financials[~financials["fs_type_shift"]]["corp_code"]) - mixed_corps
+
+        for corp in mixed_corps:
+            n = financials[financials["corp_code"] == corp]["fs_type"].nunique()
+            assert n > 1, (
+                f"corp {corp} has fs_type_shift=True but only {n} distinct fs_type value"
+            )
+        for corp in list(uniform_corps)[:50]:
+            n = financials[financials["corp_code"] == corp]["fs_type"].nunique()
+            assert n == 1, (
+                f"corp {corp} has fs_type_shift=False but {n} distinct fs_type values"
+            )
 
 
 # ─── Category 3: Beneish formula spot-check ──────────────────────────────────
@@ -392,6 +426,37 @@ class TestBeneishFormula:
             f"First year should have null m_score, got {row_t_minus_1['m_score']}"
         )
 
+    def test_m_score_null_tolerance(self):
+        """The _null_core > 2 guard: ≤2 missing core fields still compute; >2 → null."""
+        # Core fields in _run_beneish: dsri, aqi, sgi, depi, tata
+        # dsri needs receivables + revenue; aqi needs soft_assets + ta; sgi needs revenue;
+        # depi needs ppe + depreciation; tata needs net_income + cfo
+
+        base = self._make_two_year_df()
+
+        # Case A: 2 nulled core inputs — score should still be computed (not null)
+        df_a = base.copy()
+        df_a.loc[df_a["year"] == 2020, "receivables"] = None   # kills dsri
+        df_a.loc[df_a["year"] == 2020, "net_income"]  = None   # kills tata (along with cfo=80)
+        result_a = self._run_beneish(df_a)
+        row_a = result_a[result_a["year"] == 2020].iloc[0]
+        # With 2 null core fields, _null_core == 2 which is NOT > 2 → score computed
+        assert not pd.isna(row_a["m_score"]), (
+            f"Case A (2 nulled core inputs): expected non-null m_score, got {row_a['m_score']}"
+        )
+
+        # Case B: 3 nulled core inputs — score must be null
+        df_b = base.copy()
+        df_b.loc[df_b["year"] == 2020, "receivables"]  = None  # kills dsri
+        df_b.loc[df_b["year"] == 2020, "net_income"]   = None  # kills tata (cfo=80, but net_income=None → tata=NaN)
+        df_b.loc[df_b["year"] == 2020, "depreciation"] = None  # kills depi
+        df_b.loc[df_b["year"] == 2019, "depreciation"] = None  # kills depi_l too
+        result_b = self._run_beneish(df_b)
+        row_b = result_b[result_b["year"] == 2020].iloc[0]
+        assert pd.isna(row_b["m_score"]), (
+            f"Case B (3 nulled core inputs): expected null m_score, got {row_b['m_score']}"
+        )
+
 
 # ─── Category 4: Beneish output schema ───────────────────────────────────────
 
@@ -492,3 +557,247 @@ class TestReferenceArtifacts:
         actual_variables = set(df["variable_name"].tolist())
         missing_vars = expected_variables - actual_variables
         assert not missing_vars, f"Crosswalk missing entries for variables: {missing_vars}"
+
+
+# ─── Category 6: Backoff helper ──────────────────────────────────────────────
+
+class TestBackoffHelper:
+    """
+    Unit tests for _finstate_with_backoff() in extract_dart.py.
+    Uses a fake dart object; patches time.sleep to avoid real delays.
+    """
+
+    def _get_fn(self):
+        import extract_dart as ed
+        return ed._finstate_with_backoff
+
+    def test_non_020_error_fails_immediately(self, monkeypatch):
+        """Non-rate-limit exceptions must propagate immediately without retry."""
+        call_count = 0
+
+        class _FakeDart:
+            def finstate_all(self, corp_code, year, fs_div):
+                nonlocal call_count
+                call_count += 1
+                raise ValueError("no route to host")
+
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        fn = self._get_fn()
+        with pytest.raises(ValueError, match="no route to host"):
+            fn(_FakeDart(), "00000001", 2022, "CFS")
+        assert call_count == 1, f"Expected 1 attempt, got {call_count}"
+
+    def test_020_error_retries_exhausted(self, monkeypatch):
+        """Error 020 must retry up to 5 total attempts then re-raise."""
+        call_count = 0
+
+        class _FakeDart:
+            def finstate_all(self, corp_code, year, fs_div):
+                nonlocal call_count
+                call_count += 1
+                raise Exception("Error 020 quota exceeded")
+
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        fn = self._get_fn()
+        with pytest.raises(Exception, match="020"):
+            fn(_FakeDart(), "00000001", 2022, "CFS")
+        assert call_count == 5, f"Expected 5 total attempts (1 + 4 retries), got {call_count}"
+
+    def test_020_succeeds_on_retry(self, monkeypatch):
+        """Error 020 on first two attempts then success on third must return the result."""
+        call_count = 0
+        sentinel = object()
+
+        class _FakeDart:
+            def finstate_all(self, corp_code, year, fs_div):
+                nonlocal call_count
+                call_count += 1
+                if call_count < 3:
+                    raise Exception("Error 020")
+                return sentinel
+
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        fn = self._get_fn()
+        result = fn(_FakeDart(), "00000001", 2022, "CFS")
+        assert result is sentinel
+        assert call_count == 3, f"Expected 3 attempts, got {call_count}"
+
+
+# ─── Category 7: Run summary merge ───────────────────────────────────────────
+
+class TestRunSummaryMerge:
+    """
+    Unit tests for _merge_run_summaries() in pipeline.py.
+    Pure Python — no file I/O or monkeypatching required.
+    """
+
+    def _base_new(self):
+        return {"total_companies": 10, "years": [2022], "completed_at": "2026-01-01", "elapsed_minutes": 1.0}
+
+    def _get_fn(self):
+        # Add pipeline dir to path so pipeline.py can be imported
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        from pipeline import _merge_run_summaries
+        return _merge_run_summaries
+
+    def test_full_beats_partial_in_old(self):
+        fn = self._get_fn()
+        old = {"full_data": [], "partial_data": [{"corp_code": "B", "years": [2022]}], "no_data": [], "errors": []}
+        new = {**self._base_new(), "full_data": ["B"], "partial_data": [], "no_data": [], "errors": []}
+        merged = fn(old, new)
+        assert "B" in merged["full_data"]
+        partial_codes = [e["corp_code"] for e in merged["partial_data"]]
+        assert "B" not in partial_codes
+
+    def test_full_beats_no_data_in_old(self):
+        fn = self._get_fn()
+        old = {"full_data": [], "partial_data": [], "no_data": ["C"], "errors": []}
+        new = {**self._base_new(), "full_data": ["C"], "partial_data": [], "no_data": [], "errors": []}
+        merged = fn(old, new)
+        assert "C" in merged["full_data"]
+        assert "C" not in merged["no_data"]
+
+    def test_old_full_not_downgraded_by_new_no_data(self):
+        fn = self._get_fn()
+        old = {"full_data": ["A"], "partial_data": [], "no_data": [], "errors": []}
+        new = {**self._base_new(), "full_data": [], "partial_data": [], "no_data": ["A"], "errors": []}
+        merged = fn(old, new)
+        assert "A" in merged["full_data"]
+        assert "A" not in merged["no_data"]
+
+    def test_errors_last_write_wins(self):
+        fn = self._get_fn()
+        old = {"full_data": [], "partial_data": [], "no_data": [], "errors": [{"corp_code": "X", "error": "timeout"}]}
+        new = {**self._base_new(), "full_data": [], "partial_data": [], "no_data": [], "errors": [{"corp_code": "X", "error": "020"}]}
+        merged = fn(old, new)
+        err = next(e for e in merged["errors"] if e["corp_code"] == "X")
+        assert err["error"] == "020"
+
+
+# ─── Category 8: Transform unit tests ────────────────────────────────────────
+
+class TestTransformUnits:
+    """
+    Unit tests for _extract_lt_debt() and _detect_expense_method() from transform.py.
+    All tests build minimal DataFrames — no parquet I/O.
+    """
+
+    def _get_fns(self):
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        import transform as tr
+        return tr._extract_lt_debt, tr._detect_expense_method
+
+    # ── _extract_lt_debt ──────────────────────────────────────────────────────
+
+    def test_lt_debt_prefers_longtermborrowingsgross(self):
+        fn, _ = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "BS", "account_id": "dart_LongTermBorrowingsGross", "account_nm": "장기차입금", "thstrm_amount": "100,000"},
+            {"sj_div": "BS", "account_id": "dart_BondsIssued", "account_nm": "사채", "thstrm_amount": "200,000"},
+        ])
+        assert fn(df) == 100_000.0
+
+    def test_lt_debt_falls_back_to_bonds_issued(self):
+        fn, _ = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "BS", "account_id": "dart_BondsIssued", "account_nm": "사채", "thstrm_amount": "200,000"},
+        ])
+        assert fn(df) == 200_000.0
+
+    def test_lt_debt_falls_back_to_korean_name(self):
+        fn, _ = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "BS", "account_nm": "장기차입금", "thstrm_amount": "50,000"},
+        ])
+        assert fn(df) == 50_000.0
+
+    def test_lt_debt_returns_none_when_absent(self):
+        fn, _ = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "BS", "account_id": "ifrs-full_Assets", "account_nm": "자산총계", "thstrm_amount": "1,000,000"},
+        ])
+        assert fn(df) is None
+
+    # ── _detect_expense_method ────────────────────────────────────────────────
+
+    def test_expense_method_function_via_is(self):
+        _, fn = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "IS", "account_nm": "매출원가"},
+            {"sj_div": "IS", "account_nm": "판매비와관리비"},
+        ])
+        assert fn(df) == "function"
+
+    def test_expense_method_function_via_cis(self):
+        _, fn = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "CIS", "account_nm": "매출원가"},
+        ])
+        assert fn(df) == "function"
+
+    def test_expense_method_nature_when_no_cogs(self):
+        _, fn = self._get_fns()
+        df = pd.DataFrame([
+            {"sj_div": "IS", "account_nm": "판매비와관리비"},
+            {"sj_div": "IS", "account_nm": "기타비용"},
+        ])
+        assert fn(df) == "nature"
+
+
+# ─── Category 9: KSIC full-run resume behavior ───────────────────────────────
+
+# Extend TestKsicSamplePreservation with an additional test below.
+# (Appended here as a standalone function in the test module scope for clarity.)
+
+class TestKsicFullRunResume:
+    """
+    Documents the full-run (sample=None) behavior of fetch_ksic():
+    when sample=None, existing entries are overwritten by the new full run.
+    This test verifies that behavior is intentional and documented.
+    """
+
+    def _make_companies(self, corp_codes: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({"corp_code": corp_codes, "stock_code": corp_codes})
+
+    def test_full_run_resume_does_not_discard_existing(self, tmp_path, monkeypatch):
+        """
+        When sample=None and all 10 companies are in the run, all 10 must appear
+        in the output — pre-existing entries should not be silently lost.
+
+        Note: full-run (sample=None) overwrites the parquet with fresh data for all
+        companies. If the company list hasn't changed, this is a no-op in effect.
+        This test verifies the output still contains exactly the expected 10 rows.
+        """
+        import extract_dart as ed
+        monkeypatch.setattr(ed, "RAW_SECTOR", tmp_path / "sector")
+        (tmp_path / "sector").mkdir()
+
+        existing_codes = [f"CODE{i:04d}" for i in range(10)]
+        existing_df = pd.DataFrame({
+            "corp_code":   existing_codes,
+            "induty_code": ["264"] * 10,
+        })
+        existing_df.to_parquet(tmp_path / "sector" / "ksic.parquet", index=False)
+
+        class _FakeInfo:
+            induty_code = "264"
+        class _FakeDart:
+            def company(self, corp_code):
+                return _FakeInfo()
+        monkeypatch.setattr(ed, "_dart", lambda: _FakeDart())
+        monkeypatch.setattr(ed, "_sleep_ksic", 0)
+
+        all_companies = self._make_companies(existing_codes)
+        result = ed.fetch_ksic(all_companies, force=False, sample=None)
+
+        assert len(result) == 10, (
+            f"Full run wrote {len(result)} rows; expected 10. "
+            "If this fails, full-run overwrites behavior discarded existing entries."
+        )
+        assert set(result["corp_code"]) == set(existing_codes)

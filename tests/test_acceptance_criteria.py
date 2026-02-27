@@ -191,10 +191,11 @@ def test_ac7_reproducibility():
     """
     p = PROCESSED / "beneish_scores.parquet"
     assert p.exists(), "AC7 FAIL: beneish_scores.parquet not found"
-    md5 = hashlib.md5(p.read_bytes()).hexdigest()
-    # md5 is recorded in the test output for cross-run comparison; always passes
-    # when the file exists. True reproducibility requires a manual re-run check.
-    assert True, f"md5={md5}"
+    md5 = hashlib.md5(p.read_bytes()).hexdigest()  # diagnostic only — log for cross-run comparison
+    scores = pd.read_parquet(p)
+    assert len(scores) >= 1_000, f"AC7 FAIL: beneish_scores has only {len(scores)} rows (md5={md5})"
+    assert scores["m_score"].notna().any(), "AC7 FAIL: No non-null m_score values found"
+    assert scores["flag"].notna().all(), "AC7 FAIL: flag column has nulls"
 
 
 # ─── Top-50 spot check (session-scoped side effect) ──────────────────────────

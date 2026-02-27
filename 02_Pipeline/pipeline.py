@@ -48,6 +48,42 @@ if str(_PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(_PIPELINE_DIR))
 
 
+def _merge_run_summaries(old: dict, new: dict) -> dict:
+    """Merge two run summary dicts. new wins on conflicts; full_data > partial_data > no_data."""
+    merged_full    = set(old.get("full_data", []))
+    merged_partial = {e["corp_code"]: e for e in old.get("partial_data", [])}
+    merged_no_data = set(old.get("no_data", []))
+    merged_errors  = {e["corp_code"]: e for e in old.get("errors", [])}
+
+    for corp_code in new.get("full_data", []):
+        merged_full.add(corp_code)
+        merged_partial.pop(corp_code, None)
+        merged_no_data.discard(corp_code)
+        merged_errors.pop(corp_code, None)
+    for entry in new.get("partial_data", []):
+        cc = entry["corp_code"]
+        if cc not in merged_full:
+            merged_partial[cc] = entry
+            merged_no_data.discard(cc)
+            merged_errors.pop(cc, None)
+    for corp_code in new.get("no_data", []):
+        if corp_code not in merged_full and corp_code not in merged_partial:
+            merged_no_data.add(corp_code)
+    for entry in new.get("errors", []):
+        merged_errors[entry["corp_code"]] = entry
+
+    return {
+        "total_companies": new["total_companies"],
+        "years": new["years"],
+        "completed_at": new.get("completed_at"),
+        "elapsed_minutes": new.get("elapsed_minutes"),
+        "full_data":    sorted(merged_full),
+        "partial_data": list(merged_partial.values()),
+        "no_data":      sorted(merged_no_data),
+        "errors":       list(merged_errors.values()),
+    }
+
+
 def run_stage_dart(
     market: str,
     start: int,
@@ -100,18 +136,21 @@ def run_stage_dart(
             companies, start_year=start, end_year=end,
             force=force, sample=sample, max_minutes=max_minutes,
         )
-        # Write run summary
+        # Write run summary — merge with existing if this is a resumed run
         import json
         out = Path("01_Data/raw/run_summary.json")
         out.parent.mkdir(parents=True, exist_ok=True)
+
+        old = json.load(open(out, encoding="utf-8")) if out.exists() else {}
+        merged_summary = _merge_run_summaries(old, summary)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+            json.dump(merged_summary, f, ensure_ascii=False, indent=2)
         log.info(
             "Run summary: %d full, %d partial, %d no-data, %d errors",
-            len(summary.get("full_data", [])),
-            len(summary.get("partial_data", [])),
-            len(summary.get("no_data", [])),
-            len(summary.get("errors", [])),
+            len(merged_summary["full_data"]),
+            len(merged_summary["partial_data"]),
+            len(merged_summary["no_data"]),
+            len(merged_summary["errors"]),
         )
 
     if stage in (None, "sector"):
@@ -120,11 +159,11 @@ def run_stage_dart(
         ed.fetch_ksic(companies, force=force, sample=sample)
 
 
-def run_stage_transform(start: int, end: int, sample: int | None = None) -> None:
+def run_stage_transform(start: int, end: int, sample: int | None = None, force: bool = False) -> None:
     """Run transform.py to build company_financials.parquet."""
     import transform as tr
     log.info("=== Stage: transform (%d–%d) ===", start, end)
-    tr.run(start_year=start, end_year=end, sample=sample)
+    tr.run(start_year=start, end_year=end, sample=sample, force=force)
 
 
 def run(
@@ -157,7 +196,7 @@ def run(
         return
 
     if stage == "transform":
-        run_stage_transform(start, end, sample=sample)
+        run_stage_transform(start, end, sample=sample, force=force)
         return
 
     # Full Phase 1 pipeline: dart → transform
@@ -168,7 +207,7 @@ def run(
     )
 
     log.info("=== Stage: transform ===")
-    run_stage_transform(start, end, sample=sample)
+    run_stage_transform(start, end, sample=sample, force=force)
 
     log.info("=== Phase 1 pipeline complete ===")
     log.info(
