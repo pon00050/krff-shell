@@ -44,3 +44,11 @@ Add invariant tests for any new Parquet schema columns. Add acceptance-criteria 
 ## Roadmap
 
 See [`ROADMAP.md`](ROADMAP.md) for the full backlog with priorities, and [`00_Reference/19_Pipeline_Improvement_Areas.md`](00_Reference/19_Pipeline_Improvement_Areas.md) for the technical backlog.
+
+## Repository Topics
+
+This repo is tagged with the following GitHub topics for discoverability:
+
+`kosdaq` `dart` `beneish` `financial-forensics` `korea` `open-data`
+
+If you add a significant new capability (e.g. CB/BW timelines, officer network), consider whether additional topics are warranted — update them via GitHub Settings → General → Topics.
