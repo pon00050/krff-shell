@@ -30,14 +30,14 @@ Revenue model numbers reference `00_Reference/00_Feature_Analysis.md` Section 4 
 |---|---|---|---|---|---|
 | PR2 | Extraction timestamp in both parquets | 1.5 | Low | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §DQ2 |
 | PR3 | Composite risk tier column (`risk_tier`) | 1.5 | Low | ✅ Complete | `17_MVP_Requirements.md` §9 |
-| H3 | DART Error 020 exponential backoff | 2 | Medium | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §H3 |
-| M1 | `run_summary.json` merge on resume | 2 | Low | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §M1 |
-| M3 | Silent CFS→OFS shift detection | 2 | Low | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §M3 |
+| H3 | DART Error 020 exponential backoff | 2 | Medium | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §H3 |
+| M1 | `run_summary.json` merge on resume | 2 | Low | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §M1 |
+| M3 | Silent CFS→OFS shift detection | 2 | Low | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §M3 |
 | M2 | Pin WICS snapshot date to `end_year` | 3 | Low | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §M2 |
 | PR1 | Data lineage `match_method_*` columns | 3 | Medium | ⬜ Open | `17_MVP_Requirements.md` §9, `19_Pipeline_Improvement_Areas.md` §DQ1 |
 | PR4 | KOSPI coverage | 4 | Medium | ⬜ Open | `17_MVP_Requirements.md` §9 |
 | PR5 | Historical backfill 2014–2018 | 4 | Medium | ⬜ Open | `17_MVP_Requirements.md` §9 |
-| L2 | `--force` flag in `transform.py` | Later | Low | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §L2 |
+| L2 | `--force` flag in `transform.py` | Later | Low | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §L2 |
 | L3 | Optional tqdm progress bar | Later | Low | ⬜ Open | `19_Pipeline_Improvement_Areas.md` §L3 |
 
 ### Fixed items (not actionable)

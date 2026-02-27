@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import logging
 import os
@@ -255,6 +256,24 @@ def _parse_amount(raw) -> float | None:
         return None
 
 
+def _finstate_with_backoff(dart, corp_code: str, year: int, fs_div: str):
+    """Call dart.finstate_all() with exponential backoff on Error 020 (rate limit).
+    Raises the final exception if all retries are exhausted."""
+    delays = [2, 4, 8, 16]
+    last_exc = None
+    for attempt, delay in enumerate([0] + delays):
+        if delay:
+            log.warning("DART Error 020 (rate limit) — retrying in %ds (attempt %d/4)", delay, attempt)
+            time.sleep(delay)
+        try:
+            return dart.finstate_all(corp_code, year, fs_div=fs_div)
+        except Exception as exc:
+            last_exc = exc
+            if "020" not in str(exc):
+                raise  # not a rate limit error — fail immediately
+    raise last_exc
+
+
 def fetch_financials_for_company(
     corp_code: str,
     corp_name: str,
@@ -295,7 +314,7 @@ def fetch_financials_for_company(
 
         # Pass 1: CFS
         try:
-            df = dart.finstate_all(corp_code, year, fs_div="CFS")
+            df = _finstate_with_backoff(dart, corp_code, year, "CFS")
             if df is not None and not df.empty:
                 fs_type = "CFS"
             else:
@@ -308,7 +327,7 @@ def fetch_financials_for_company(
         # Pass 2: OFS fallback
         if df is None:
             try:
-                df = dart.finstate_all(corp_code, year, fs_div="OFS")
+                df = _finstate_with_backoff(dart, corp_code, year, "OFS")
                 if df is not None and not df.empty:
                     fs_type = "OFS"
                 else:
@@ -423,6 +442,9 @@ def fetch_all_financials(
         else:
             summary["no_data"].append(corp_code)
 
+    elapsed_sec = time.monotonic() - start_time
+    summary["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    summary["elapsed_minutes"] = round(elapsed_sec / 60, 2)
     return summary
 
 

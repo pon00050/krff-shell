@@ -71,6 +71,8 @@ The `run_summary.json` written by `extract_dart.py` at the end of the financials
 
 Not a blocker — the summary is informational only. Fix deferred to a later cleanup pass.
 
+**FIXED (Feb 2026):** `fetch_all_financials()` now populates `completed_at` (UTC ISO-8601) and `elapsed_minutes` before returning. Both fields are preserved through the merge logic in `pipeline.py` and written to `run_summary.json`.
+
 ---
 
 ## KI-003 — AC4 financial exclusion check is a soft pass
@@ -79,3 +81,5 @@ Not a blocker — the summary is informational only. Fix deferred to a later cle
 **Scope:** AC4 checks for KSIC 640–669 / 68200 rows in `beneish_scores.parquet`, but `beneish_scores.parquet` does not carry a `ksic_code` column (it is present in `company_financials.parquet` but dropped in the Beneish output schema)
 
 The exclusion itself is applied correctly during `transform.py` — financial sector companies are removed before `company_financials.parquet` is written. AC4 soft-passes because it cannot find a KSIC column in the scores output to verify against. The underlying exclusion is sound; the verification check needs to be updated to read from `company_financials.parquet` instead. Deferred to a later cleanup pass.
+
+**FIXED (Feb 2026):** AC4 was updated to read from `company_financials.parquet` directly. The test now passes with a genuine assertion.

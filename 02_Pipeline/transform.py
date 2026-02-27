@@ -447,13 +447,32 @@ def build_company_financials(
     log.info("After exclusions: %d rows (removed %d)", len(df), before - len(df))
 
     # -----------------------------------------------------------------------
-    # 6. Column order and types
+    # 6. Detect CFS→OFS year-over-year shifts
+    # -----------------------------------------------------------------------
+    if len(df) > 0:
+        shift_corps = (
+            df.groupby("corp_code")["fs_type"]
+            .transform(lambda s: s.nunique() > 1)
+            .astype(bool)
+        )
+        df["fs_type_shift"] = shift_corps
+        n_shifted_corps = df[df["fs_type_shift"]]["corp_code"].nunique()
+        if n_shifted_corps > 0:
+            log.info(
+                "fs_type_shift: %d rows across %d companies have mixed CFS/OFS across years",
+                int(df["fs_type_shift"].sum()), n_shifted_corps,
+            )
+    else:
+        df["fs_type_shift"] = pd.Series(dtype=bool)
+
+    # -----------------------------------------------------------------------
+    # 7. Column order and types
     # -----------------------------------------------------------------------
     df["extraction_date"] = date.today().isoformat()
 
     column_order = [
         "corp_code", "ticker", "company_name", "market", "year", "extraction_date",
-        "fs_type", "dart_api_source", "expense_method",
+        "fs_type", "fs_type_shift", "dart_api_source", "expense_method",
         "receivables", "revenue", "cogs", "sga", "ppe",
         "depreciation", "total_assets", "lt_debt", "net_income", "cfo",
         "wics_sector_code", "wics_sector", "ksic_code", "krx_sector",
@@ -483,7 +502,7 @@ def _empty_company_financials() -> pd.DataFrame:
     """Return an empty DataFrame with the correct schema."""
     return pd.DataFrame(columns=[
         "corp_code", "ticker", "company_name", "market", "year",
-        "fs_type", "dart_api_source", "expense_method",
+        "fs_type", "fs_type_shift", "dart_api_source", "expense_method",
         "receivables", "revenue", "cogs", "sga", "ppe",
         "depreciation", "total_assets", "lt_debt", "net_income", "cfo",
         "wics_sector_code", "wics_sector", "ksic_code", "krx_sector",
@@ -524,8 +543,13 @@ def _upload_to_r2(local_path: Path, r2_key: str) -> None:
     log.info("Uploaded to R2: s3://%s", dest)
 
 
-def run(start_year: int = 2019, end_year: int = 2023, sample: int | None = None) -> None:
+def run(start_year: int = 2019, end_year: int = 2023, sample: int | None = None, force: bool = False) -> None:
     """Run Phase 1 transforms."""
+    if force:
+        out = PROCESSED / "company_financials.parquet"
+        if out.exists():
+            out.unlink()
+            log.info("--force: deleted %s", out)
     log.info("Transform: building company_financials.parquet (%d–%d)", start_year, end_year)
     df = build_company_financials(start_year=start_year, end_year=end_year, sample=sample)
     log.info("Transform complete. %d rows in company_financials.parquet", len(df))
@@ -542,5 +566,10 @@ if __name__ == "__main__":
         metavar="N",
         help="Limit to first N companies (must match --sample used in extract stage)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Delete and rebuild output even if it exists",
+    )
     args = parser.parse_args()
-    run(start_year=args.start, end_year=args.end, sample=args.sample)
+    run(start_year=args.start, end_year=args.end, sample=args.sample, force=args.force)
