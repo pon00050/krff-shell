@@ -33,7 +33,8 @@ canonical ownership. Cite documents here rather than copying their content.
 | `04_Technical_Architecture.md` | **Canonical.** Three-layer architecture; Phase 1–4 milestone specs; unified dataset schema; tech stack |
 | `pipeline-details.md` | Run commands, CLI flags, stage descriptions, Marimo deferral note, resumability |
 | `19_Pipeline_Improvement_Areas.md` | Open backlog items by ID (H3, M1–M3, PR1–PR5); fixed items for reference |
-| `20_Cloud_Infrastructure_Setup.md` | R2 + Hetzner provisioning steps; status as of Feb 2026 |
+| `20_Cloud_Infrastructure_Setup.md` | R2 + Oracle Cloud provisioning steps; architecture; status as of Feb 2026 |
+| `24_VPS_Setup_Procedure.md` | Step-by-step VPS rebuild procedure; known issues (PyKRX geo-block, uv run python) |
 
 ---
 

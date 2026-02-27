@@ -225,20 +225,22 @@ nano .env   # add DART_API_KEY + all four R2_ variables
 ### Step 6 — Run the pipeline on the VPS
 
 ```bash
-ssh root@<vps_ip>
+ssh -i ~/.ssh/ssh-key-2026-02-27.key ubuntu@168.107.21.26
 cd kr-forensic-finance
 
 # Smoke test first
-python 02_Pipeline/pipeline.py --market KOSDAQ --start 2021 --end 2023 --sample 5 --sleep 0.1 --max-minutes 3
+uv run python 02_Pipeline/pipeline.py --market KOSDAQ --start 2021 --end 2023 --sample 5 --sleep 0.1 --max-minutes 3
 
 # Confirm R2 upload lines appear in log output:
 # 2026-02-27 ... [INFO] Uploaded to R2: s3://kr-forensic-finance/processed/company_financials.parquet
 
 # Full run (run inside tmux or screen so SSH disconnect doesn't kill it)
 tmux new -s pipeline
-python 02_Pipeline/pipeline.py --market KOSDAQ --start 2019 --end 2023
+uv run python 02_Pipeline/pipeline.py --market KOSDAQ --start 2019 --end 2023
 # Ctrl+B, D to detach; tmux attach -t pipeline to reattach
 ```
+
+> **Known issue — PyKRX geo-block:** PyKRX returns 0 KOSDAQ tickers when run from the Oracle Cloud VPS (Chuncheon, ap-chuncheon-1). KRX's API appears to block or return empty responses for non-browser data center IPs. The R2 upload path works correctly — this only affects fresh data pulls. Workaround: run the full pipeline from your laptop (Korean residential IP) and rely on the VPS only for R2-read analysis tasks, or investigate KRX header spoofing (see `00_Reference/19_Pipeline_Improvement_Areas.md`).
 
 **Verify upload in Cloudflare dashboard:**
 - R2 → `kr-forensic-finance` bucket → Objects tab
@@ -275,10 +277,10 @@ pytest tests/test_acceptance_criteria.py -v
 | R2 API token | Access Key ID + Secret saved | ✅ Done (Feb 27, 2026) |
 | `.env` updated (laptop) | Four R2_ vars populated | ✅ Done (Feb 27, 2026) |
 | Oracle Cloud VPS provisioned | SSH access confirmed | ✅ Done (Feb 27, 2026) — instance running at 168.107.21.26 |
-| VPS setup | git clone + uv sync + .env populated | ⬜ Pending (user action) |
-| Pipeline on VPS (smoke) | "Uploaded to R2" in log | ⬜ Pending (user action) |
-| Pipeline on VPS (full) | Full KOSDAQ 2019–2023 run completes | ⬜ Pending (user action) |
-| R2 bucket contents | Both parquet files visible in dashboard | ⬜ Pending (user action) |
+| VPS setup | git clone + uv sync + .env populated | ✅ Done (Feb 27, 2026) — git clone + uv sync + .env populated |
+| Pipeline on VPS (smoke) | "Uploaded to R2" in log | ⚠️ Partial (Feb 27, 2026) — R2 upload confirmed; PyKRX returned 0 tickers (KRX geo-block — see Step 6 note) |
+| Pipeline on VPS (full) | Full KOSDAQ 2019–2023 run completes | ⬜ Pending — blocked by KRX geo-block |
+| R2 bucket contents | Both parquet files visible in dashboard | ✅ Done (Feb 27, 2026) — company_financials.parquet confirmed uploaded |
 | Laptop R2 read | beneish_screen.py works with no local data | ⬜ Pending (user action) |
 | Acceptance criteria (R2) | All AC1–AC7 PASS from R2 | ⬜ Pending (user action) |
 

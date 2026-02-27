@@ -56,17 +56,17 @@ python 03_Analysis/beneish_screen.py
 # Expected: completes, produces beneish_scores.csv
 ```
 
-- [ ] `test_pipeline_invariants.py` — all tests pass
-- [ ] `test_acceptance_criteria.py` — AC1–AC7 all pass
-- [ ] `beneish_screen.py` — completes without error
+- [x] `test_pipeline_invariants.py` — all tests pass
+- [x] `test_acceptance_criteria.py` — AC1–AC7 all pass
+- [x] `beneish_screen.py` — completes without error
 
 ---
 
 ## Section 4 — Documentation Review
 
-- [ ] README.md disclaimer present: "Outputs are hypotheses for human review — not fraud conclusions"
-- [ ] README.md GitHub clone URL updated from `YOUR_USERNAME` placeholder to actual username
-- [ ] `00_Reference/20_Cloud_Infrastructure_Setup.md` — Hetzner status note is current
+- [x] README.md disclaimer present: "Outputs are hypotheses for human review — not fraud conclusions"
+- [x] README.md GitHub clone URL updated from `YOUR_USERNAME` placeholder to actual username
+- [x] `00_Reference/20_Cloud_Infrastructure_Setup.md` — Oracle Cloud replaces Hetzner; Step 6 updated with correct SSH user, uv run python, and geo-block note
 - [ ] No TODO/FIXME comments in any source file (confirmed clean in audit)
 - [ ] `.env.example` shows placeholders only (confirmed clean in audit)
 
@@ -93,11 +93,11 @@ git branch -M main
 git push -u origin main
 ```
 
-- [ ] `git status` reviewed carefully before first commit — no secrets, no large files
-- [ ] GitHub repo created as **public**
-- [ ] Initial commit pushed
+- [x] `git status` reviewed carefully before first commit — no secrets, no large files
+- [x] GitHub repo created as **public** (https://github.com/pon00050/kr-forensic-finance)
+- [x] Initial commit pushed
 - [ ] README renders correctly on GitHub (check formatting, links, code blocks)
-- [ ] Update README.md `git clone` URL from placeholder to actual repo URL, push again
+- [x] Update README.md `git clone` URL from placeholder to actual repo URL, push again
 
 ---
 
