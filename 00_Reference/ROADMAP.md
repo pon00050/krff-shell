@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status:** Phase 1 complete (Feb 27, 2026) — KOSDAQ Beneish M-Score screen 2019–2023, 25 tests passing (18 invariant + 7 AC).
+**Status:** Phase 1 complete (Feb 27, 2026) — KOSDAQ Beneish M-Score screen 2019–2023, 44 tests passing (37 invariant + 7 AC).
 
 **Legend:**
 - Status: ✅ Complete · ⬜ Open · 🔄 In progress
