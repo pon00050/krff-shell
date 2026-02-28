@@ -75,6 +75,7 @@ canonical ownership. Cite documents here rather than copying their content.
 |---|---|
 | `22_Phase1_Completion_Record.md` | Phase 1 sign-off — run stats, row counts, test results, known issues (permanent record) |
 | `23_GitHub_Release_Checklist.md` | Pre-release audit results; .gitignore gaps fixed; checklist status |
+| `26_Beneish_MScore_Components.md` | Plain-language reference for all 8 M-Score components — formulas, economic intuition, false positive sectors, real-world cases |
 | `ROADMAP.md` | Active milestones; technical backlog by ID; completed work table |
 
 ---
