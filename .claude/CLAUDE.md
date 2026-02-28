@@ -113,6 +113,31 @@ python 03_Analysis/beneish_screen.py
 
 ---
 
+## Commit and Push Protocol
+
+**For any commit that touches source code (`.py`, `pyproject.toml`, `.github/workflows/`):**
+
+1. Run tests locally before committing:
+   ```bash
+   python -m pytest tests/test_pipeline_invariants.py -v
+   ```
+   All 37 invariant tests must pass before proceeding.
+
+2. Only then commit and push:
+   ```bash
+   git add <specific files>
+   git commit -m "..."
+   git push
+   ```
+
+3. After pushing, confirm GitHub Actions CI goes green before declaring the task done.
+
+**For doc-only commits** (`.md` files, no code changes): tests are not required before committing, but CI must still go green after push.
+
+**Never use `git add -A` or `git add .`** — always stage specific files by name to avoid accidentally committing `.env`, log files, or data files.
+
+---
+
 ## Known Issues
 
 See `BUGS.md` (project root) for documented bugs with investigation paths and fixes.
