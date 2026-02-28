@@ -183,7 +183,7 @@ def _chart_components(df, pd, px):
         color="Flagged",
         barmode="group",
         color_discrete_map={"Flagged": "#e74c3c", "Not Flagged": "#3498db"},
-        title="Average Beneish Component Values — Flagged vs. Non-Flagged Companies",
+        title="Average Beneish Component Values — Flagged vs. Non-Flagged Companies<br><sup>Each component measures a different earnings-quality signal; 1.0 = neutral (no change year-over-year)</sup>",
         labels={"Mean Value": "Mean Value (1.0 = neutral)"},
     )
     fig_components.add_hline(
