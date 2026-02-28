@@ -34,6 +34,8 @@ This project builds that infrastructure layer — so that researchers, journalis
 | `dart_xbrl_crosswalk.csv` | `00_Reference/` | XBRL element → variable mapping; audit trail | XBRL 요소 → 재무 변수 매핑; 감사 추적 |
 | `beneish_viz.html` | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
 
+**Visual summary (no Python required):** [`03_Analysis/beneish_viz.html`](03_Analysis/beneish_viz.html) — download and open in any browser for an interactive overview of the Phase 1 results.
+
 Planned (not yet implemented): CB/BW timelines, disclosure timing anomalies, officer network graph.
 
 향후 계획 (미구현): CB/BW 타임라인, 공시 시점 이상 징후, 플래그 기업 간 인물 네트워크 그래프.
