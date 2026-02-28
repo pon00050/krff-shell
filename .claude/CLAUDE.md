@@ -121,7 +121,7 @@ python 03_Analysis/beneish_screen.py
    ```bash
    python -m pytest tests/test_pipeline_invariants.py -v
    ```
-   All 37 invariant tests must pass before proceeding.
+   All invariant tests must pass before proceeding.
 
 2. Only then commit and push:
    ```bash
