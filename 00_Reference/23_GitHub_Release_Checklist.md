@@ -3,6 +3,8 @@
 > **Scope:** Pre-release audit results and checklist for publishing the repo publicly. Written February 27, 2026.
 > **Canonical for:** .gitignore gaps fixed; pre-release checklist status.
 > **See also:** `22_Phase1_Completion_Record.md` (completion sign-off), `ROADMAP.md` (CB4 blocker status)
+>
+> **Status as of Feb 28, 2026:** Repo is public, v1.0.0 released, CI green. All checklist items complete except portfolio note and repo watch (personal tasks).
 
 Checklist for publishing kr-forensic-finance as a public GitHub repository.
 Written February 27, 2026. Based on a full pre-release audit.
@@ -96,7 +98,7 @@ git push -u origin main
 - [x] `git status` reviewed carefully before first commit — no secrets, no large files
 - [x] GitHub repo created as **public** (https://github.com/pon00050/kr-forensic-finance)
 - [x] Initial commit pushed
-- [ ] README renders correctly on GitHub (check formatting, links, code blocks)
+- [x] README renders correctly on GitHub (check formatting, links, code blocks)
 - [x] Update README.md `git clone` URL from placeholder to actual repo URL, push again
 
 ---
@@ -104,8 +106,8 @@ git push -u origin main
 ## Section 6 — Post-Publish
 
 - [ ] Add GitHub repo URL to career-development portfolio notes (`02_Opportunities/한국세무사회전산법인_Company_Research.md` Section 19 publication checklist)
-- [ ] Verify `01_Data/` directory does not appear in GitHub file browser (gitignored)
-- [ ] Verify `.env` does not appear in GitHub file browser (gitignored)
+- [x] Verify `01_Data/` directory does not appear in GitHub file browser (gitignored) — confirmed Feb 28, 2026
+- [x] Verify `.env` does not appear in GitHub file browser (gitignored) — confirmed Feb 28, 2026
 - [ ] Star / watch the repo to monitor any issue reports
 
 ---

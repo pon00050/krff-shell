@@ -4,7 +4,7 @@
 > **Canonical for:** Technical backlog; known pipeline limitations by ID.
 > **See also:** `ROADMAP.md` (backlog summary with priorities), `22_Phase1_Completion_Record.md` (what was fixed)
 
-*Last updated: February 2026. Based on first end-to-end test run (>50 min before abort).*
+*Last updated: February 28, 2026. Phase 1 complete Feb 27, 2026. See `22_Phase1_Completion_Record.md` for final run stats and test results.*
 
 ---
 
