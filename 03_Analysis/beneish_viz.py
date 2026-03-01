@@ -167,24 +167,24 @@ def _chart_components(df, pd, px):
         _sub = df[df["flag"] == _flag_val]
         for _col in _components:
             if _col in df.columns:
-                _mean = _sub[_col].mean()
+                _median = _sub[_col].median()
                 _rows.append({
                     "Component": _labels[_col],
                     "Flagged": _label,
-                    "Mean Value": round(_mean, 3) if pd.notna(_mean) else None,
+                    "Median Value": round(_median, 3) if pd.notna(_median) else None,
                 })
 
-    _comp_df = pd.DataFrame(_rows).dropna(subset=["Mean Value"])
+    _comp_df = pd.DataFrame(_rows).dropna(subset=["Median Value"])
 
     fig_components = px.bar(
         _comp_df,
         x="Component",
-        y="Mean Value",
+        y="Median Value",
         color="Flagged",
         barmode="group",
         color_discrete_map={"Flagged": "#e74c3c", "Not Flagged": "#3498db"},
-        title="Average Beneish Component Values — Flagged vs. Non-Flagged Companies<br><sup>Each component measures a different earnings-quality signal; 1.0 = neutral (no change year-over-year)</sup>",
-        labels={"Mean Value": "Mean Value (1.0 = neutral)"},
+        title="Median Beneish Component Values — Flagged vs. Non-Flagged Companies<br><sup>Median used — component distributions (especially SGI) have extreme outliers that distort means. 1.0 = neutral (no change year-over-year)</sup>",
+        labels={"Median Value": "Median Value (1.0 = neutral)"},
     )
     fig_components.add_hline(
         y=1.0,
@@ -238,7 +238,7 @@ def _export_html(df, fig_distribution, fig_risk_sector, fig_year_trend, fig_comp
         (fig_distribution, "Chart 1 — M-Score Distribution"),
         (fig_risk_sector,  "Chart 2 — Risk Tier by Sector"),
         (fig_year_trend,   "Chart 3 — Flag Rate by Year"),
-        (fig_components,   "Chart 4 — Component Averages: Flagged vs. Non-Flagged"),
+        (fig_components,   "Chart 4 — Component Medians: Flagged vs. Non-Flagged"),
         (fig_heatmap,      "Chart 5 — Sector × Year Flag Rate Heatmap"),
     ]
 
