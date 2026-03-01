@@ -285,11 +285,11 @@ def _compute_beneish(df_fin, np, pd, date):
         scored = df[df["m_score"].notna()].copy()
         if len(scored) > 0:
             group_counts = (
-                scored.groupby(["wics_sector_code", "year"])["m_score"]
+                scored.groupby(["wics_sector_code", "year", "market"])["m_score"]
                 .transform("count")
             )
             scored["sector_percentile"] = scored.groupby(
-                ["wics_sector_code", "year"]
+                ["wics_sector_code", "year", "market"]
             )["m_score"].rank(pct=True) * 100
             scored.loc[group_counts < 10, "sector_percentile"] = np.nan
             df.update(scored[["sector_percentile"]])

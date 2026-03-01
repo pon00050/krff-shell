@@ -33,6 +33,17 @@ python 03_Analysis/beneish_screen.py
 
 ---
 
+## Development Workflow
+
+**Test-driven development:** For every new behaviour or schema contract, write the test
+first. The test must fail before the implementation, then pass after. All existing
+invariant tests (`tests/test_pipeline_invariants.py`) and acceptance criteria
+(`tests/test_acceptance_criteria.py`) must continue passing after each change.
+New tests live in `test_pipeline_invariants.py` (schema/formula invariants) or
+`test_acceptance_criteria.py` (end-to-end output quality).
+
+---
+
 ## Pipeline Architecture
 
 The pipeline uses a three-layer architecture (Layer 1: Python automation, Layer 2: AI-assisted review, Layer 3: human judgment). See `00_Reference/04_Technical_Architecture.md` for the full diagram. This project implements Layers 1 and 2 only.

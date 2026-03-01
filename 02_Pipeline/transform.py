@@ -136,7 +136,7 @@ def _extract_field(
     account_ids: list[str],
     account_nms: list[str],
     sj_filter: list[str] | None = None,
-) -> float | None:
+) -> tuple[float | None, str | None]:
     """
     Extract a single Beneish field value from a finstate_all DataFrame.
 
@@ -145,34 +145,37 @@ def _extract_field(
       2. account_nm substring match (fallback for non-standard filers)
 
     sj_filter: if provided, only look in rows with sj_div in this list.
+
+    Returns:
+        (value, method) where method is "exact_id", "korean_substring", or None.
     """
     if df is None or df.empty:
-        return None
+        return (None, None)
 
     subset = df
     if sj_filter and "sj_div" in df.columns:
         subset = df[df["sj_div"].isin(sj_filter)]
     if subset.empty:
-        return None
+        return (None, None)
 
     # Primary: exact account_id match
     if "account_id" in subset.columns:
         for aid in account_ids:
             match = subset[subset["account_id"] == aid]
             if not match.empty:
-                return _parse_amount(match.iloc[0].get("thstrm_amount"))
+                return (_parse_amount(match.iloc[0].get("thstrm_amount")), "exact_id")
 
     # Fallback: account_nm substring match
     if "account_nm" in subset.columns:
         for nm in account_nms:
             match = subset[subset["account_nm"].str.contains(nm, na=False, regex=False)]
             if not match.empty:
-                return _parse_amount(match.iloc[0].get("thstrm_amount"))
+                return (_parse_amount(match.iloc[0].get("thstrm_amount")), "korean_substring")
 
-    return None
+    return (None, None)
 
 
-def _extract_lt_debt(df: pd.DataFrame) -> float | None:
+def _extract_lt_debt(df: pd.DataFrame) -> tuple[float | None, str | None]:
     """
     Extract long-term debt using the confirmed fallback chain:
       1. dart_LongTermBorrowingsGross  (confirmed present in DART XBRL)
@@ -181,9 +184,12 @@ def _extract_lt_debt(df: pd.DataFrame) -> float | None:
 
     dart_NoncurrentBorrowings does NOT exist. ifrs-full:NoncurrentPortionOfLongtermBorrowings
     does NOT exist. Both confirmed empirically (OQ-E, Feb 2026).
+
+    Returns:
+        (value, method) where method is "exact_id", "korean_substring", or None.
     """
     if df is None or df.empty:
-        return None
+        return (None, None)
 
     # BS rows only
     subset = df
@@ -194,15 +200,15 @@ def _extract_lt_debt(df: pd.DataFrame) -> float | None:
         for aid in ["dart_LongTermBorrowingsGross", "dart_BondsIssued"]:
             match = subset[subset["account_id"] == aid]
             if not match.empty:
-                return _parse_amount(match.iloc[0].get("thstrm_amount"))
+                return (_parse_amount(match.iloc[0].get("thstrm_amount")), "exact_id")
 
     # Korean fallback — only 장기차입금 (long-term borrowings), NOT 비유동부채
     if "account_nm" in subset.columns:
         match = subset[subset["account_nm"].str.contains("장기차입금", na=False, regex=False)]
         if not match.empty:
-            return _parse_amount(match.iloc[0].get("thstrm_amount"))
+            return (_parse_amount(match.iloc[0].get("thstrm_amount")), "korean_substring")
 
-    return None
+    return (None, None)
 
 
 def _detect_expense_method(df: pd.DataFrame) -> str:
@@ -267,23 +273,25 @@ def _extract_company_year(
     for field, (ids, nms) in ACCOUNT_SPECS.items():
         if field == "cogs":
             # COGS only from IS/CIS rows
-            row[field] = _extract_field(df, ids, nms, sj_filter=["IS", "CIS"])
+            row[field], row[f"match_method_{field}"] = _extract_field(df, ids, nms, sj_filter=["IS", "CIS"])
         elif field in ("depreciation", "cfo"):
             # Cash flow statement rows
-            row[field] = _extract_field(df, ids, nms, sj_filter=["CF"])
+            row[field], row[f"match_method_{field}"] = _extract_field(df, ids, nms, sj_filter=["CF"])
         elif field in ("ppe", "total_assets"):
             # Balance sheet rows
-            row[field] = _extract_field(df, ids, nms, sj_filter=["BS"])
+            row[field], row[f"match_method_{field}"] = _extract_field(df, ids, nms, sj_filter=["BS"])
         else:
-            row[field] = _extract_field(df, ids, nms)
+            row[field], row[f"match_method_{field}"] = _extract_field(df, ids, nms)
 
     # lt_debt has its own logic
-    row["lt_debt"] = _extract_lt_debt(df)
+    row["lt_debt"], row["match_method_lt_debt"] = _extract_lt_debt(df)
 
     # For nature-method companies, cogs and sga are structurally absent — set explicit null
     if expense_method == "nature":
         row["cogs"] = None
         row["sga"] = None
+        row["match_method_cogs"] = None
+        row["match_method_sga"] = None
 
     return row
 

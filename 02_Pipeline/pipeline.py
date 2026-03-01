@@ -160,8 +160,31 @@ def run_stage_dart(
 
     if stage in (None, "sector"):
         companies = ed.fetch_company_list(market=market, force=False)
-        ed.fetch_wics(force=force)
+        ed.fetch_wics(force=force, year=end)
         ed.fetch_ksic(companies, force=force, sample=sample)
+
+
+def run_stage_cb_bw(
+    force: bool = False,
+    sample: int | None = None,
+    sleep: float | None = None,
+    max_minutes: float | None = None,
+) -> None:
+    """Phase 2: fetch CB/BW events → price/volume → officer holdings."""
+    import extract_cb_bw as ecb
+    import extract_price_volume as epv
+    import extract_officer_holdings as eoh
+
+    _sleep = sleep if sleep is not None else 0.5
+
+    log.info("=== Stage: cb_bw (CB/BW events) ===")
+    ecb.fetch_cb_bw_events(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
+
+    log.info("=== Stage: cb_bw (price/volume) ===")
+    epv.fetch_price_volume(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
+
+    log.info("=== Stage: cb_bw (officer holdings) ===")
+    eoh.fetch_officer_holdings(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
 
 
 def run_stage_transform(start: int, end: int, sample: int | None = None, force: bool = False) -> None:
@@ -186,7 +209,7 @@ def run(
     """
     Run the Phase 1 pipeline.
 
-    stage: 'dart' | 'transform' | None (both in sequence)
+    stage: 'dart' | 'transform' | 'cb_bw' | None (dart+transform in sequence)
     """
     log.info(
         "=== Pipeline: market=%s, years=%d–%d, stage=%s ===",
@@ -204,6 +227,11 @@ def run(
 
     if stage == "transform":
         run_stage_transform(start, end, sample=sample, force=force)
+        return
+
+    if stage == "cb_bw":
+        log.info("=== Stage: cb_bw ===")
+        run_stage_cb_bw(force=force, sample=sample, sleep=sleep, max_minutes=max_minutes)
         return
 
     # Full Phase 1 pipeline: dart → transform
@@ -268,7 +296,7 @@ Examples:
     )
     parser.add_argument(
         "--stage",
-        choices=["dart", "transform"],
+        choices=["dart", "transform", "cb_bw"],
         help="Run a single stage only (default: run both)",
     )
     parser.add_argument(

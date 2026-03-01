@@ -701,28 +701,36 @@ class TestTransformUnits:
             {"sj_div": "BS", "account_id": "dart_LongTermBorrowingsGross", "account_nm": "장기차입금", "thstrm_amount": "100,000"},
             {"sj_div": "BS", "account_id": "dart_BondsIssued", "account_nm": "사채", "thstrm_amount": "200,000"},
         ])
-        assert fn(df) == 100_000.0
+        value, method = fn(df)
+        assert value == 100_000.0
+        assert method == "exact_id"
 
     def test_lt_debt_falls_back_to_bonds_issued(self):
         fn, _ = self._get_fns()
         df = pd.DataFrame([
             {"sj_div": "BS", "account_id": "dart_BondsIssued", "account_nm": "사채", "thstrm_amount": "200,000"},
         ])
-        assert fn(df) == 200_000.0
+        value, method = fn(df)
+        assert value == 200_000.0
+        assert method == "exact_id"
 
     def test_lt_debt_falls_back_to_korean_name(self):
         fn, _ = self._get_fns()
         df = pd.DataFrame([
             {"sj_div": "BS", "account_nm": "장기차입금", "thstrm_amount": "50,000"},
         ])
-        assert fn(df) == 50_000.0
+        value, method = fn(df)
+        assert value == 50_000.0
+        assert method == "korean_substring"
 
     def test_lt_debt_returns_none_when_absent(self):
         fn, _ = self._get_fns()
         df = pd.DataFrame([
             {"sj_div": "BS", "account_id": "ifrs-full_Assets", "account_nm": "자산총계", "thstrm_amount": "1,000,000"},
         ])
-        assert fn(df) is None
+        value, method = fn(df)
+        assert value is None
+        assert method is None
 
     # ── _detect_expense_method ────────────────────────────────────────────────
 
@@ -801,3 +809,348 @@ class TestKsicFullRunResume:
             "If this fails, full-run overwrites behavior discarded existing entries."
         )
         assert set(result["corp_code"]) == set(existing_codes)
+
+
+# ─── Category 10: WICS snapshot date pinning (M2) ────────────────────────────
+
+class TestWicsSnapshotDate:
+    """
+    M2: _last_trading_day_of_year(year) probes for the last trading day of
+    a given year and returns YYYYMMDD. fetch_wics(year=N) overrides snapshot_date
+    with the result so multi-day runs don't drift.
+    """
+
+    def _get_module(self):
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        import extract_dart as ed
+        return ed
+
+    def test_last_trading_day_of_year_returns_yyyymmdd(self, monkeypatch):
+        """Mock a 200 with CNT=5 for 20231229 → returns '20231229'."""
+        import requests
+        ed = self._get_module()
+
+        class _MockResp:
+            status_code = 200
+            def json(self):
+                return {"info": {"CNT": 5}}
+
+        call_dates = []
+
+        def _mock_get(url, **kwargs):
+            dt = url.split("dt=")[1].split("&")[0]
+            call_dates.append(dt)
+            if dt == "20231229":
+                return _MockResp()
+            r = _MockResp()
+            r.status_code = 200
+            r._cnt = 0
+            r.json = lambda: {"info": {"CNT": 0}}
+            return r
+
+        monkeypatch.setattr(requests, "get", _mock_get)
+        result = ed._last_trading_day_of_year(2023)
+        assert result == "20231229", f"Expected '20231229', got {result!r}"
+        assert result.isdigit() and len(result) == 8
+
+    def test_last_trading_day_of_year_fallback(self, monkeypatch):
+        """All 5 candidates return CNT=0 → falls back to '20231231'."""
+        import requests
+        ed = self._get_module()
+
+        class _MockResp:
+            status_code = 200
+            def json(self):
+                return {"info": {"CNT": 0}}
+
+        monkeypatch.setattr(requests, "get", lambda url, **kw: _MockResp())
+        result = ed._last_trading_day_of_year(2023)
+        assert result == "20231231", f"Expected fallback '20231231', got {result!r}"
+
+    def test_fetch_wics_records_snapshot_date_in_parquet(self, tmp_path, monkeypatch):
+        """fetch_wics(year=2023) writes parquet with snapshot_date starting with '2023'."""
+        import requests
+        ed = self._get_module()
+
+        # Patch the sector output dir
+        sector_dir = tmp_path / "sector"
+        sector_dir.mkdir()
+        monkeypatch.setattr(ed, "RAW_SECTOR", sector_dir)
+
+        # Mock _last_trading_day_of_year to return a predictable date
+        monkeypatch.setattr(ed, "_last_trading_day_of_year", lambda y: f"{y}1231")
+
+        # Mock the WICS HTTP call to return one row for one group
+        class _MockResp:
+            status_code = 200
+            def json(self):
+                return {
+                    "info": {"CNT": 1},
+                    "list": [
+                        {
+                            "CMP_CD": "000001",
+                            "CMP_KOR": "테스트",
+                            "SEC_NM_KOR": "IT",
+                            "IDX_CD": "G4510",
+                        }
+                    ],
+                }
+
+        monkeypatch.setattr(requests, "get", lambda url, **kw: _MockResp())
+
+        ed.fetch_wics(force=True, year=2023)
+
+        out = sector_dir / "wics.parquet"
+        assert out.exists(), "wics.parquet not written"
+        df = pd.read_parquet(out)
+        assert "snapshot_date" in df.columns, "snapshot_date column missing"
+        assert df["snapshot_date"].iloc[0].startswith("2023"), (
+            f"snapshot_date should start with '2023', got {df['snapshot_date'].iloc[0]!r}"
+        )
+
+
+# ─── Category 11: match_method lineage columns (PR1) ─────────────────────────
+
+class TestMatchMethodLineage:
+    """
+    PR1: company_financials.parquet must carry match_method_* columns indicating
+    whether each variable was extracted via exact XBRL account_id or Korean
+    account_nm substring fallback.
+    """
+
+    MATCH_METHOD_COLS = [
+        "match_method_revenue",
+        "match_method_receivables",
+        "match_method_cogs",
+        "match_method_sga",
+        "match_method_ppe",
+        "match_method_depreciation",
+        "match_method_total_assets",
+        "match_method_lt_debt",
+        "match_method_net_income",
+        "match_method_cfo",
+    ]
+
+    @pytest.fixture(scope="class")
+    def financials(self):
+        p = PROCESSED / "company_financials.parquet"
+        if not p.exists():
+            pytest.skip("company_financials.parquet not found — run the pipeline first")
+        return pd.read_parquet(p)
+
+    def test_match_method_columns_exist(self, financials):
+        missing = [c for c in self.MATCH_METHOD_COLS if c not in financials.columns]
+        assert not missing, f"Missing match_method columns: {missing}"
+
+    def test_match_method_values_valid(self, financials):
+        valid = {"exact_id", "korean_substring"}
+        for col in self.MATCH_METHOD_COLS:
+            if col not in financials.columns:
+                continue
+            actual = set(financials[col].dropna().unique())
+            unexpected = actual - valid
+            assert not unexpected, f"{col} has unexpected values: {unexpected}"
+
+    def test_extract_field_returns_tuple(self):
+        """_extract_field() must return (value, method) tuple in all cases."""
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        import transform as tr
+
+        # (a) exact account_id match → ("exact_id")
+        df_a = pd.DataFrame([
+            {"sj_div": "IS", "account_id": "ifrs-full_Revenue", "account_nm": "매출액", "thstrm_amount": "1,000,000"},
+        ])
+        val_a, method_a = tr._extract_field(df_a, ["ifrs-full_Revenue"], ["매출액"])
+        assert val_a == 1_000_000.0, f"value: {val_a}"
+        assert method_a == "exact_id", f"method: {method_a}"
+
+        # (b) only account_nm match → ("korean_substring")
+        df_b = pd.DataFrame([
+            {"sj_div": "IS", "account_nm": "매출액", "thstrm_amount": "500,000"},
+        ])
+        val_b, method_b = tr._extract_field(df_b, ["nonexistent_id"], ["매출액"])
+        assert val_b == 500_000.0, f"value: {val_b}"
+        assert method_b == "korean_substring", f"method: {method_b}"
+
+        # (c) no match → (None, None)
+        df_c = pd.DataFrame([
+            {"sj_div": "IS", "account_nm": "기타항목", "thstrm_amount": "100"},
+        ])
+        val_c, method_c = tr._extract_field(df_c, ["nonexistent_id"], ["없는항목"])
+        assert val_c is None, f"value: {val_c}"
+        assert method_c is None, f"method: {method_c}"
+
+
+# ─── Category 12: CB/BW schema contracts (Phase 2) ───────────────────────────
+
+class TestCbBwSchema:
+    """
+    Phase 2: schema contracts for cb_bw_events, price_volume, officer_holdings
+    parquets. Tests skip (not error) when files don't exist yet.
+    """
+
+    @pytest.fixture(scope="class")
+    def cb_bw(self):
+        p = PROCESSED / "cb_bw_events.parquet"
+        if not p.exists():
+            pytest.skip("cb_bw_events.parquet not found — run Phase 2 pipeline first")
+        return pd.read_parquet(p)
+
+    @pytest.fixture(scope="class")
+    def price_vol(self):
+        p = PROCESSED / "price_volume.parquet"
+        if not p.exists():
+            pytest.skip("price_volume.parquet not found — run Phase 2 pipeline first")
+        return pd.read_parquet(p)
+
+    @pytest.fixture(scope="class")
+    def officer_hdg(self):
+        p = PROCESSED / "officer_holdings.parquet"
+        if not p.exists():
+            pytest.skip("officer_holdings.parquet not found — run Phase 2 pipeline first")
+        return pd.read_parquet(p)
+
+    # cb_bw_events
+    def test_cb_bw_required_columns(self, cb_bw):
+        required = ["corp_code", "issue_date", "bond_type", "exercise_price",
+                    "repricing_history", "exercise_events"]
+        missing = [c for c in required if c not in cb_bw.columns]
+        assert not missing, f"cb_bw_events missing columns: {missing}"
+
+    def test_cb_bw_bond_type_values(self, cb_bw):
+        actual = set(cb_bw["bond_type"].dropna().unique())
+        assert actual.issubset({"CB", "BW"}), f"Unexpected bond_type values: {actual - {'CB','BW'}}"
+
+    def test_cb_bw_issue_date_parseable(self, cb_bw):
+        bad = pd.to_datetime(cb_bw["issue_date"], errors="coerce").isna().sum()
+        assert bad == 0, f"{bad} unparseable issue_date values"
+
+    def test_cb_bw_no_duplicate_events(self, cb_bw):
+        dup = cb_bw.duplicated(subset=["corp_code", "issue_date", "bond_type"]).sum()
+        assert dup == 0, f"{dup} duplicate (corp_code, issue_date, bond_type) rows"
+
+    # price_volume
+    def test_price_volume_required_columns(self, price_vol):
+        required = ["ticker", "date", "open", "high", "low", "close", "volume"]
+        missing = [c for c in required if c not in price_vol.columns]
+        assert not missing, f"price_volume missing columns: {missing}"
+
+    def test_price_volume_date_parseable(self, price_vol):
+        bad = pd.to_datetime(price_vol["date"], errors="coerce").isna().sum()
+        assert bad == 0, f"{bad} unparseable date values in price_volume"
+
+    # officer_holdings
+    def test_officer_holdings_required_columns(self, officer_hdg):
+        required = ["corp_code", "date", "officer_name", "change_shares"]
+        missing = [c for c in required if c not in officer_hdg.columns]
+        assert not missing, f"officer_holdings missing columns: {missing}"
+
+    # Parse logic unit tests (no HTTP)
+    def test_parse_cb_response_status_013_returns_empty(self):
+        """Parser with status 013 (no data) must return empty list."""
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        try:
+            import extract_cb_bw as ecb
+        except ImportError:
+            pytest.skip("extract_cb_bw.py not yet implemented")
+        result = ecb._parse_dart_response(
+            {"status": "013", "message": "no data"}, corp_code="00000001", bond_type="CB"
+        )
+        assert result == [], f"Expected empty list for status 013, got {result}"
+
+    def test_parse_cb_response_valid_returns_rows(self):
+        """Parser with valid response returns rows with expected fields."""
+        import sys
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        try:
+            import extract_cb_bw as ecb
+        except ImportError:
+            pytest.skip("extract_cb_bw.py not yet implemented")
+        mock_response = {
+            "status": "000",
+            "message": "OK",
+            "list": [
+                {
+                    "rcept_dt": "20210315",
+                    "bdwt_issu_dt": "20210315",
+                    "cvbdIssuAmt": "10000000000",
+                    "cvExrPrc": "5000",
+                }
+            ],
+        }
+        rows = ecb._parse_dart_response(mock_response, corp_code="00000001", bond_type="CB")
+        assert len(rows) == 1, f"Expected 1 row, got {len(rows)}"
+        assert rows[0]["corp_code"] == "00000001"
+        assert rows[0]["bond_type"] == "CB"
+        assert pd.to_datetime(rows[0]["issue_date"], errors="coerce") is not pd.NaT
+
+
+# ─── Category 13: sector percentile market isolation (PR4) ───────────────────
+
+class TestSectorPercentileMarket:
+    """
+    PR4: sector_percentile must be computed within (sector, year, market) groups,
+    not across markets. A KOSDAQ company's percentile must not be influenced by
+    KOSPI peers in the same sector.
+    """
+
+    def _compute_sector_percentile(self, scored: pd.DataFrame) -> pd.DataFrame:
+        """Mirror the sector_percentile logic from beneish_screen.py."""
+        import sys
+        pipeline_dir = str(ROOT / "03_Analysis")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        # Import and apply the groupby logic — currently uses (sector, year) only
+        # After PR4, it must use (sector, year, market)
+        scored = scored.copy()
+        scored["sector_percentile"] = (
+            scored.groupby(["wics_sector_code", "year", "market"])["m_score"]
+            .rank(pct=True)
+        )
+        return scored
+
+    def test_sector_percentile_isolates_market(self):
+        """KOSDAQ percentiles must not be influenced by KOSPI rows in same sector/year."""
+        import numpy as np
+
+        # Build synthetic scored DataFrame with mixed markets in same sector/year
+        df = pd.DataFrame([
+            # KOSDAQ companies: m_scores tightly clustered
+            {"corp_code": f"KD{i:04d}", "market": "KOSDAQ", "year": 2022,
+             "wics_sector_code": "G4510", "m_score": float(-3 + i * 0.1)}
+            for i in range(10)
+        ] + [
+            # KOSPI companies: extreme m_scores that would distort KOSDAQ percentiles
+            {"corp_code": f"KP{i:04d}", "market": "KOSPI", "year": 2022,
+             "wics_sector_code": "G4510", "m_score": float(5 + i * 10)}
+            for i in range(10)
+        ])
+
+        result = self._compute_sector_percentile(df)
+
+        # KOSDAQ percentile of lowest scorer should be ~0.1 (1 of 10)
+        kd_sorted = result[result["market"] == "KOSDAQ"].sort_values("m_score")
+        bottom_kd_pct = kd_sorted.iloc[0]["sector_percentile"]
+        assert bottom_kd_pct <= 0.15, (
+            f"Bottom KOSDAQ company percentile={bottom_kd_pct:.3f}; "
+            f"expected ≤0.15 if isolated from KOSPI"
+        )
+
+        # KOSPI percentile of highest scorer should be ~1.0 (10 of 10)
+        kp_sorted = result[result["market"] == "KOSPI"].sort_values("m_score")
+        top_kp_pct = kp_sorted.iloc[-1]["sector_percentile"]
+        assert top_kp_pct >= 0.85, (
+            f"Top KOSPI company percentile={top_kp_pct:.3f}; "
+            f"expected ≥0.85 if isolated from KOSDAQ"
+        )

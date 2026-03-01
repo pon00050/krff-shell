@@ -185,6 +185,33 @@ def _find_wics_snapshot_date() -> str:
     return today.strftime("%Y%m%d")
 
 
+def _last_trading_day_of_year(year: int) -> str:
+    """Return the last trading day of `year` as YYYYMMDD by probing WICS.
+
+    Probes Dec 31, 30, 29, 28, 27 in order; returns the first date that
+    returns CNT > 0. Falls back to YYYYMMDD 1231 if all probes fail.
+    """
+    candidates = [(12, 31), (12, 30), (12, 29), (12, 28), (12, 27)]
+    for month, day in candidates:
+        dt = f"{year}{month:02d}{day:02d}"
+        try:
+            resp = requests.get(
+                "https://www.wiseindex.com/Index/GetIndexComponets"
+                f"?ceil_yn=0&dt={dt}&sec_cd=G4510",
+                headers=WICS_HEADERS,
+                timeout=10,
+            )
+            if resp.status_code == 200 and resp.json().get("info", {}).get("CNT", 0) > 0:
+                result = dt
+                log.debug("_last_trading_day_of_year(%d) → %s", year, result)
+                return result
+        except Exception:
+            pass
+    result = f"{year}1231"
+    log.debug("_last_trading_day_of_year(%d) → %s", year, result)
+    return result
+
+
 WICS_SNAPSHOT_DATE = _find_wics_snapshot_date()
 
 
@@ -464,7 +491,7 @@ def fetch_all_financials(
 # Stage 3: Sector -- WICS
 # ---------------------------------------------------------------------------
 
-def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False) -> pd.DataFrame:
+def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False, year: int | None = None) -> pd.DataFrame:
     """
     Fetch WICS industry group memberships for all 25 groups.
     Writes 01_Data/raw/sector/wics.parquet.
@@ -475,6 +502,9 @@ def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False) -> 
     Single-date snapshot (end of 2023). Limitation: WICS assignments change over time,
     but a single snapshot is sufficient for Phase 1 MVP.
     """
+    if year is not None:
+        snapshot_date = _last_trading_day_of_year(year)
+        log.info("fetch_wics: year=%d → snapshot_date=%s", year, snapshot_date)
     out = RAW_SECTOR / "wics.parquet"
     if out.exists() and not force:
         log.info("wics.parquet exists (use --force to refresh)")
@@ -493,7 +523,8 @@ def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False) -> 
         )
         try:
             resp = requests.get(url, headers=WICS_HEADERS, timeout=15)
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                raise ValueError(f"HTTP {resp.status_code}")
             companies_in_group = resp.json().get("list", [])
             for c in companies_in_group:
                 rows.append({

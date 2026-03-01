@@ -149,12 +149,24 @@ def test_ac4_financial_exclusion(financials):
 # ─── AC5: Market purity ──────────────────────────────────────────────────────
 
 def test_ac5_market_purity(scores):
-    """Zero KOSPI tickers in beneish_scores output."""
+    """Zero rows from the *other* market in beneish_scores output.
+
+    Reads PIPELINE_MARKET env var (default: KOSDAQ) to determine which market
+    was run, then asserts that no rows from the opposite market are present.
+    This allows the same test to validate both KOSDAQ-only and KOSPI-only runs.
+    """
+    pipeline_market = os.getenv("PIPELINE_MARKET", "KOSDAQ").upper()
     assert "market" in scores.columns, "AC5 SKIP: market column not found"
-    kospi = scores[scores["market"].str.upper().str.contains("KOSPI", na=False)]
-    assert len(kospi) == 0, (
-        f"AC5 FAIL: {len(kospi)} KOSPI rows found in beneish_scores"
-    )
+    if pipeline_market == "KOSDAQ":
+        other = scores[scores["market"].str.upper().str.contains("KOSPI", na=False)]
+        assert len(other) == 0, (
+            f"AC5 FAIL: {len(other)} KOSPI rows found in beneish_scores (PIPELINE_MARKET=KOSDAQ)"
+        )
+    else:
+        other = scores[scores["market"].str.upper().str.contains("KOSDAQ", na=False)]
+        assert len(other) == 0, (
+            f"AC5 FAIL: {len(other)} KOSDAQ rows found in beneish_scores (PIPELINE_MARKET={pipeline_market})"
+        )
 
 
 # ─── AC6: Expense method ─────────────────────────────────────────────────────
