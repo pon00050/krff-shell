@@ -17,8 +17,13 @@
 | 2 | CB/BW timelines | ⬜ Planned | `cb_bw_timelines.py` | #1, #3, #4, #8, #9 |
 | 3 | Timing anomalies | ⬜ Planned | `timing_anomalies.py` | #3, #4, #5, #9 |
 | 4 | Officer network | ⬜ Planned | `officer_network.py` | #2, #3, #4, #9 |
+| 5 | Continuous monitoring (3-way match) | ⬜ Planned | `monitoring/` (new dir) | #3, #4, #5, #9 |
 
 Revenue model numbers reference `00_Reference/00_Feature_Analysis.md` Section 4 priority matrix.
+
+> Phase 5 is the first milestone requiring a persistent hosted process (daemon). It
+> depends on Phases 2 and 3 producing a stable watchlist. Infrastructure decision
+> (Railway vs. Oracle Cloud VPS) is documented in `20_Cloud_Infrastructure_Setup.md`.
 
 ---
 

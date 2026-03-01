@@ -308,3 +308,61 @@ The following were designed but deliberately deferred to Phase 2:
 - **Weekly CB/BW and officer monitoring** — DART event-driven pulls
 
 Design for all of the above is documented in `00_Reference/19_Data_Refresh_Cadence.md`.
+
+---
+
+## Phase 5 — Continuous Monitoring Infrastructure
+
+The monitoring daemon (described in `08_Continuous_Monitoring_System.md`) runs three legs
+continuously:
+
+- **Leg 1** — watchlist management (updated from Phases 2–4 outputs)
+- **Leg 2** — market polling via PyKRX every 5 minutes during KST trading hours
+- **Leg 3** — DART RSS and news RSS, continuously
+
+This is a long-running process. It cannot run on a laptop that sleeps or goes offline.
+Phase 5 is the first milestone that **requires a persistent hosted process**.
+
+### Option A — Oracle Cloud VPS (existing, recommended)
+
+Already provisioned at `168.107.21.26` (ap-chuncheon-1, Chuncheon, South Korea).
+
+**Advantages:**
+- $0/month (Always Free — no expiry)
+- South Korea region → correct KST timezone handling for market hours and DART timestamps
+- Already set up with git clone + uv sync + .env
+
+**Blocker:** The same PyKRX geo-block that prevents full pipeline runs on the VPS also
+affects Leg 2. KRX returns 0 tickers from the Oracle Cloud data center IP. **This must be
+resolved before the monitoring daemon can run on the VPS.** See the Step 6 note and
+`00_Reference/19_Pipeline_Improvement_Areas.md` for the investigation path.
+
+### Option B — Railway
+
+Railway provides a clean worker service type (no web server needed) and good developer
+experience for long-running daemons.
+
+**Critical blocker:** PyKRX must be confirmed working from Railway IP ranges before
+committing to this option. If KRX geo-blocks Railway's data center IPs (the same reason it
+blocks Oracle Cloud), Leg 2 is broken and Railway cannot host the monitoring daemon.
+
+**Pre-commit test:** Deploy a minimal Railway service and run:
+```python
+from pykrx import stock
+print(stock.get_market_ticker_list('20230101', market='KOSDAQ'))
+```
+If this returns an empty list, Railway has the same geo-block as Oracle Cloud.
+
+**Estimated cost:** ~$5–10/month for a small always-on worker (vs. $0 for the VPS).
+
+### Recommendation
+
+Start with the **Oracle Cloud VPS already provisioned**. Solve the PyKRX geo-block first —
+the fix (browser header spoofing or a proxy) applies equally to both options. Evaluate
+Railway only after confirming PyKRX returns tickers from a hosted IP, and only if VPS
+management becomes a friction point.
+
+### Storage
+
+SQLite is sufficient for the match engine's trigger buffer at this scale. No managed
+database is needed for either hosting option.
