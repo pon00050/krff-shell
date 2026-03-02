@@ -136,3 +136,44 @@ The value proposition splits into two tiers:
 **Services tier (on request, as-needed):** Customized data pulls, deeper investigation into specific companies or sectors, bespoke analysis combining signals in ways the standard pipeline doesn't cover. This is where domain expertise (accounting background, bilingual Korean/English, understanding of K-IFRS and DART filing conventions) becomes the differentiator — not the software, which is open source, but the judgment layer on top of it.
 
 The operator's involvement in the services tier is interest-driven, not obligation-driven. The system runs autonomously. Leads surface continuously. Most go unactioned — the public can pick them up. When a request comes in, or when something is genuinely interesting, the operator engages. The infrastructure doesn't depend on constant human attention; it rewards it when it arrives.
+
+---
+
+## Steady-State Maintenance Estimate
+
+Once all five phases are operational and the monitoring daemon is running, the system requires approximately **75–130 hours/year** of human attention — roughly **2 hours/week on average**, with zero-hour weeks and quarterly spikes.
+
+### Weekly (~1–2 hrs)
+
+- **Review alert queue** — 30–60 min. Layer 3 judgment calls on materiality: does this flagged company warrant deeper investigation, or is it a false positive?
+- **System health glance** — 10 min. RSS feeds alive, DART API rate limit not exhausted, PyKRX returning data.
+- **False positive clearance** — 15–30 min. Confirm clearance on Category E companies (material business events that look like anomalies but aren't).
+
+### Quarterly (~3–5 hrs)
+
+- **Batch pipeline refresh review** — 1–2 hrs. New M-Scores after annual/semi-annual filings drop. Review watchlist deltas: who entered, who exited, why.
+- **Threshold calibration** — 1–2 hrs. Leg 2 triggers (±5% price move, 3x average volume) may need tuning based on market regime.
+- **SEIBRO scraper maintenance** — 0–2 hrs. Unpredictable: zero if no site changes, half a day if SEIBRO redesigns their WebSquare interface.
+
+### Annual (~5–10 hrs)
+
+- **DART API changes** — 2–4 hrs. Endpoint deprecations, field name changes, new filing type codes.
+- **Dependency updates** — 2–3 hrs. Python packages, Claude API version, PyKRX compatibility.
+- **Historical backfill review** — 1–3 hrs. Extend date ranges or add KOSPI coverage if scope grows.
+
+### Annualized Total
+
+| Cadence | Per-occurrence | Frequency | Annual hours |
+|---|---|---|---|
+| Weekly | 1–2 hrs | 52 weeks | 52–104 |
+| Quarterly | 3–5 hrs | 4 quarters | 12–20 |
+| Annual one-offs | 5–10 hrs | 1 | 5–10 |
+| **Total** | | | **~75–130 hrs/year** |
+
+### What Shifts the Number
+
+**Downward:** Low alert volume (watchlist <50 companies, well-calibrated thresholds) → weekly review shrinks to 15 minutes ("nothing fired, system healthy"). Could go weeks untouched.
+
+**Upward:** SEIBRO is the wild card. A major site redesign costs a full day. Services tier engagement (custom analysis requests) is unbounded by design — but that's revenue-generating work, not maintenance.
+
+**Core insight:** Human labor scales with *alert quality*, not company volume. If nothing interesting is happening in the market, commitment drops to dashboard checks.

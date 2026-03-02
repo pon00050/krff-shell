@@ -80,7 +80,8 @@ canonical ownership. Cite documents here rather than copying their content.
 | `28_Phase2_Development_Status.md` | Phase 2 CB/BW scaffold state; 5 remaining gaps; SEIBRO scraping notes; corp_ticker_map gap analysis; AC-P2-1 through AC-P2-3 status |
 | `29_Railway_Infrastructure_Analysis.md` | Infrastructure options analysis for Phase 5 — Railway, Oracle VPS, and Mac Mini M4 compared; PyKRX geo-block decision guide |
 | `30_Multi_Agent_Implementation_Guide.md` | Claude Agent SDK adoption guide — three natural agent fits (Leg 3 monitoring, narrative inconsistency, SEIBRO Playwright MCP), implementation sequence, audit hooks |
-| `31_Full_Project_Arc.md` | End-to-end narrative: Phase 1 through Phase 5, agent layer, infrastructure decisions, public access model |
+| `31_Full_Project_Arc.md` | End-to-end narrative: Phase 1 through Phase 5, agent layer, infrastructure decisions, public access model, steady-state maintenance estimate |
+| `32_Monitoring_Prereqs_Research.md` | Pre-build due diligence: relevant institutions, technical verification checklist (10 items), keyword search testing (20 keywords across 5 categories), confirmed vs. assumed facts |
 | `ROADMAP.md` | Active milestones; technical backlog by ID; completed work table |
 
 ---
