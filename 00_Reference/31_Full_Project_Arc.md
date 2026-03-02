@@ -177,3 +177,28 @@ Once all five phases are operational and the monitoring daemon is running, the s
 **Upward:** SEIBRO is the wild card. A major site redesign costs a full day. Services tier engagement (custom analysis requests) is unbounded by design — but that's revenue-generating work, not maintenance.
 
 **Core insight:** Human labor scales with *alert quality*, not company volume. If nothing interesting is happening in the market, commitment drops to dashboard checks.
+
+### Data Refresh Labor
+
+The 75–130 estimate above covers *judgment work* (alert review, calibration, maintenance). It assumes data refresh is automated. Here's what that automation replaces:
+
+| Task | Frequency | Per-occurrence | Annual (manual) |
+|---|---|---|---|
+| Annual financial pull (April/May) | 1x/year | 1–2 hrs | 1–2 |
+| Company universe + WICS refresh | 1x/year | 30 min | 0.5 |
+| KFTC cross-shareholding download | 1x/year | 30 min | 0.5 |
+| Weekly CB/BW + officer holdings | 52x/year | 10–15 min | 9–13 |
+| Daily OHLCV (PyKRX) | 250x/year | 5 min | 21 |
+| Monthly SEIBRO scrape | 12x/year | 15–30 min | 3–6 |
+
+**Automation verdict:** 5 of 6 tasks are automatable from any server (DART, SEIBRO, KFTC, WICS, Beneish recalc). PyKRX requires Korean residential IP (laptop or Mac Mini). One-time setup: ~2 hours (cron or systemd timer). See ROADMAP item A1.
+
+**Revised totals with data refresh labor included:**
+
+| Scenario | Annual hours | Weekly average |
+|---|---|---|
+| Fully automated (Phase 5) | 80–139 | ~2 hrs/week |
+| Partial automation (no daily cron) | 95–155 | ~2.5 hrs/week |
+| Fully manual | 110–173 | ~3 hrs/week |
+
+The original 75–130 estimate assumed automation is running. This subsection makes that dependency explicit.

@@ -42,6 +42,7 @@ Revenue model numbers reference `00_Reference/00_Feature_Analysis.md` Section 4 
 | PR1 | Data lineage `match_method_*` columns | 3 | Medium | ✅ Complete (Mar 2, 2026) | `17_MVP_Requirements.md` §9, `19_Pipeline_Improvement_Areas.md` §DQ1 |
 | PR4 | KOSPI coverage | 4 | Medium | ✅ Complete (Mar 2, 2026) | `17_MVP_Requirements.md` §9 |
 | PR5 | Historical backfill 2014–2018 | 4 | Medium | ⬜ Open | `17_MVP_Requirements.md` §9 |
+| A1 | Automate recurring data refresh (cron/systemd for DART weekly, SEIBRO monthly, KFTC/WICS annual, Beneish post-pipeline; PyKRX daily from Korean IP only) | 2 | Low | ⬜ Open | `19_Data_Refresh_Cadence.md`; one-time ~2 hr setup |
 | L2 | `--force` flag in `transform.py` | Later | Low | ✅ Complete | `19_Pipeline_Improvement_Areas.md` §L2 |
 | L3 | Optional tqdm progress bar | Later | Low | ✅ Complete (Feb 28, 2026) | `19_Pipeline_Improvement_Areas.md` §L3 |
 
