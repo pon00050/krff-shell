@@ -78,6 +78,7 @@ canonical ownership. Cite documents here rather than copying their content.
 | `26_Beneish_MScore_Components.md` | Plain-language reference for all 8 M-Score components — formulas, economic intuition, false positive sectors, real-world cases |
 | `27_Phase1_Analytical_Research_Questions.md` | Four open investigative questions from Phase 1 visual inspection — pursuable with existing beneish_scores.parquet, no pipeline work needed |
 | `28_Phase2_Development_Status.md` | Phase 2 CB/BW scaffold state; 5 remaining gaps; SEIBRO scraping notes; corp_ticker_map gap analysis; AC-P2-1 through AC-P2-3 status |
+| `29_Railway_Infrastructure_Analysis.md` | Infrastructure options analysis for Phase 5 — Railway, Oracle VPS, and Mac Mini M4 compared; PyKRX geo-block decision guide |
 | `ROADMAP.md` | Active milestones; technical backlog by ID; completed work table |
 
 ---

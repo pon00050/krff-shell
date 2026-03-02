@@ -192,6 +192,34 @@ Neither `company_financials.parquet` nor `beneish_scores.parquet` contains a tim
 
 ---
 
+## Infrastructure (I) — Phase 5 Pre-Requisites
+
+### I1 — Verify PyKRX from hosted IPs before Phase 5 begins
+
+**Status:** ⬜ Open
+
+**Problem:** The Phase 5 monitoring daemon (Leg 2) requires PyKRX intraday polling
+during KST trading hours. PyKRX returns 0 tickers from Oracle Cloud VPS
+(ap-chuncheon-1) due to KRX geo-blocking data center IPs. This affects any
+hosted platform (Railway, AWS, GCP, Azure, Oracle Cloud) identically.
+
+**Pre-commit test (run before any Phase 5 infrastructure commitment):**
+```python
+from pykrx import stock
+tickers = stock.get_market_ticker_list('20230101', market='KOSDAQ')
+print(f"Ticker count: {len(tickers)}")  # Expect ~1,700; 0 = geo-blocked
+```
+
+**Options (in priority order):**
+1. Mac Mini M4 at Korean residential address — solves permanently
+2. Confirm Railway IP ranges are not geo-blocked (run test above on a Railway service)
+3. Korean ISP residential proxy routing PyKRX calls through a Korean IP
+4. KRX header spoofing investigation (low confidence, fragile)
+
+**See:** `00_Reference/29_Railway_Infrastructure_Analysis.md` for full decision guide.
+
+---
+
 ## Test Invocation (After Session 19 Fixes)
 
 ```bash
