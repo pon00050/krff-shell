@@ -11,6 +11,96 @@
 
 ---
 
+## TL;DR — What Problem Does Each Option Solve?
+
+### Oracle Cloud VPS — "I need a free always-on server"
+- Solves: persistent process running 24/7 at $0/month
+- Solves: Legs 1 + 3 (DART batch + RSS/news classification)
+- Does NOT solve: PyKRX geo-block (Leg 2 still needs a Korean IP)
+- Does NOT solve: ops complexity (SSH + systemd, manual deploys)
+
+### Railway — "I need clean ops and managed infrastructure"
+- Solves: deployment friction (`git push` = deploy, no SSH)
+- Solves: multi-service coordination (private networking between daemon, match engine, API)
+- Solves: database management (managed Postgres vs. manual SQLite)
+- Solves: safe iteration (preview environments per PR)
+- Does NOT solve: PyKRX geo-block (same data center IP problem as Oracle)
+- Does NOT solve: the ongoing cost (~$10/month)
+
+### Mac Mini M4 — "I need a Korean residential IP"
+- Solves: PyKRX geo-block — **permanently and completely**
+- Solves: running all three legs from a single machine
+- Solves: ongoing cost (~$4/year electricity vs. $120/year Railway)
+- Does NOT solve: the need for a physical Korean address (must have one)
+- Does NOT solve: ops polish (no managed Postgres, no preview environments, no git-push deploys)
+
+> **Note on the ops tooling gap:** For a solo researcher at this project's scale, the Mac Mini
+> ops gaps are not blocking problems. SQLite handles the match engine fine. `git pull` + launchd
+> restart takes 30 seconds. The gap is developer convenience, not missing functionality.
+
+---
+
+## Recommendations
+
+### The one question that determines everything
+
+**Can you run PyKRX from that machine?**
+- Yes → the machine can run the full pipeline uncompromised
+- No → it can only run Legs 1 + 3; Leg 2 must come from a Korean IP source
+
+---
+
+### With Mac Mini (Korean address available)
+
+**Mac Mini alone is sufficient — it solves everything functionally.**
+
+If you later want ops polish (managed Postgres, auto-deploys, preview environments for
+testing monitoring rule changes), add Railway as the API/ops layer:
+
+```
+Mac Mini (Korean residential IP)      Railway (~$10/month, optional)
+  └── Leg 2: PyKRX intraday polling     └── Legs 1+3 daemon
+  └── Full pipeline extraction          └── Match engine
+  └── Upload processed parquets to R2   └── FastAPI (/scores, /alerts endpoints)
+                                         └── Managed Postgres
+```
+
+Mac Mini handles what only it can do (Korean IP). Railway handles what it does best
+(ops + public API exposure). Railway is optional until a public-facing API is needed.
+
+---
+
+### Without Mac Mini (no Korean address yet)
+
+```
+Oracle VPS (free, already provisioned)
+  └── Legs 1+3 daemon (DART RSS + news + Claude Haiku)
+  └── Match engine (reads R2 parquets)
+  └── Alert dispatch
+
+Laptop (manual cron)
+  └── Leg 2 PyKRX batch runs (not real-time, sufficient for Phase 5 v1)
+  └── Full pipeline extraction
+  └── Upload to R2
+```
+
+Railway is not worth $10/month here — the geo-block likely affects it identically to
+Oracle VPS. Paying for cleaner ops on a platform with the same Leg 2 limitation is not
+justified. Run the geo-block test (Section 1) first; only consider Railway if it passes.
+
+---
+
+### Summary table
+
+| Scenario | Recommendation |
+|---|---|
+| Have Korean address | Mac Mini M4 — solves everything; add Railway later for API layer only |
+| No Korean address, want $0 | Oracle VPS (Legs 1+3) + laptop cron (Leg 2) |
+| No Korean address, want clean ops | Run geo-block test on Railway first; if passes, Railway replaces Oracle VPS |
+| "Solves absolutely everything" | Mac Mini + Railway — but Mac Mini alone is 95% of the way there |
+
+---
+
 ## Section 1 — The Pivotal Prerequisite Test
 
 **Run this test before committing to any hosted platform for Phase 5.**
