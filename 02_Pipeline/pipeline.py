@@ -193,6 +193,11 @@ def run_stage_cb_bw(
     log.info("=== Stage: cb_bw (officer holdings) ===")
     eoh.fetch_officer_holdings(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
 
+    import extract_disclosures as edisc
+
+    log.info("=== Stage: cb_bw (disclosures) ===")
+    edisc.fetch_disclosures(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
+
 
 def run_stage_transform(start: int, end: int, sample: int | None = None, force: bool = False) -> None:
     """Run transform.py to build company_financials.parquet."""

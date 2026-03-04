@@ -22,15 +22,20 @@ This project builds that infrastructure layer — so that researchers, journalis
 
 ## Current State / 현재 상태
 
-**Milestone 1 is complete:** Beneish M-Score screen across all KOSDAQ-listed companies, 2019–2023.
+**Milestone 1 complete. Milestones 2–4 data extraction complete — all four milestones runnable.**
 
-**마일스톤 1 완료:** 코스닥 전 상장사 대상 Beneish M-Score 스크린, 2019–2023년.
+**마일스톤 1 완료. 마일스톤 2–4 데이터 수집 완료 — 4개 마일스톤 모두 실행 가능.**
 
 | Output | Location | EN | 한국어 |
 |---|---|---|---|
 | `beneish_scores.csv` | `03_Analysis/` | Ranked anomaly table with DART links — main deliverable | DART 링크 포함 이상 징후 순위표 — 주요 산출물 |
 | `beneish_scores.parquet` | `01_Data/processed/` | All 8 M-Score components, sector percentiles, CFS/OFS provenance (5,357 rows) | M-Score 8개 구성 요소, 섹터 백분위, CFS/OFS 출처 (5,357행) |
 | `company_financials.parquet` | `01_Data/processed/` | 5-year financials, all KOSDAQ companies (7,042 rows) | 5개년 재무제표, 코스닥 전 상장사 (7,042행) |
+| `cb_bw_events.parquet` | `01_Data/processed/` | CB/BW issuance events from DART DS005 (3,672 rows) | CB/BW 발행 이벤트, DART DS005 (3,672건) |
+| `price_volume.parquet` | `01_Data/processed/` | OHLCV price/volume windows around CB/BW events (245,354 rows) | CB/BW 이벤트 전후 OHLCV 주가/거래량 (245,354행) |
+| `corp_ticker_map.parquet` | `01_Data/processed/` | corp_code ↔ ticker mapping (1,702 rows) | corp_code ↔ 종목코드 매핑 (1,702건) |
+| `officer_holdings.parquet` | `01_Data/processed/` | Officer holding changes (6,958 rows) | 임원 보유 주식 변동 (6,958건) |
+| `disclosures.parquet` | `01_Data/processed/` | DART filing listings for timing analysis | DART 공시 목록 — 공시 시점 분석용 |
 | `dart_xbrl_crosswalk.csv` | `tests/fixtures/` | XBRL element → variable mapping; audit trail | XBRL 요소 → 재무 변수 매핑; 감사 추적 |
 | [`beneish_viz.html` ↗](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
 
@@ -38,14 +43,9 @@ This project builds that infrastructure layer — so that researchers, journalis
 
 **Open analytical questions from Phase 1:** Four investigative threads pursuable with existing data — component co-occurrence patterns among Critical flags, genuine vs. structurally-elevated sectors, repeat offenders across years, and CFS/OFS basis effects on flag distribution.
 
-Planned (not yet implemented): CB/BW timelines, disclosure timing anomalies, officer network graph.
+**All four milestones are runnable now.** Run `extract_disclosures.py` first to populate `disclosures.parquet` for Milestone 3.
 
-> **Phase 2 prerequisites:** CB/BW timelines require (a) running from a Korean
-> residential IP or confirmed FDR/yfinance backend (PyKRX is geo-blocked on
-> datacenter IPs), and (b) SEIBRO access for repricing history, which requires
-> Playwright or an official API.
-
-향후 계획 (미구현): CB/BW 타임라인, 공시 시점 이상 징후, 플래그 기업 간 인물 네트워크 그래프.
+**4개 마일스톤 모두 실행 가능.** 마일스톤 3용 `disclosures.parquet`는 `extract_disclosures.py`로 추출.
 
 ## Quickstart / 빠르게 시작하기
 
@@ -139,6 +139,7 @@ kr-forensic-finance/
 │   ├── extract_corp_ticker_map.py corp_code ↔ ticker mapping
 │   ├── extract_price_volume.py    KRX/FDR/yfinance OHLCV
 │   ├── extract_officer_holdings.py DART officer holding changes
+│   ├── extract_disclosures.py     DART filing listings (list.json)
 │   ├── extract_seibro.py          SEIBRO CB/BW repricing (Playwright)
 │   ├── extract_krx.py             KRX short selling balances
 │   ├── extract_kftc.py            KFTC cross-shareholding
