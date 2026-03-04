@@ -74,7 +74,7 @@ def _fetch_ohlcv_fdr(ticker: str, start_dt: str, end_dt: str) -> pd.DataFrame:
     try:
         import FinanceDataReader as fdr
     except ImportError:
-        raise ImportError("FinanceDataReader not installed. Run: uv add FinanceDataReader")
+        raise ImportError("FinanceDataReader not installed. Run: pip install FinanceDataReader")
     # FDR accepts YYYYMMDD or YYYY-MM-DD; returns DatetimeIndex
     df = fdr.DataReader(ticker, "KRX", start=start_dt, end=end_dt)
     if df is None or df.empty:
@@ -91,7 +91,7 @@ def _fetch_ohlcv_yfinance(ticker: str, start_dt: str, end_dt: str) -> pd.DataFra
     try:
         import yfinance as yf
     except ImportError:
-        raise ImportError("yfinance not installed. Run: uv add yfinance")
+        raise ImportError("yfinance not installed. Run: pip install yfinance")
     # Korean tickers: try .KS (KOSPI/KOSDAQ both supported by Yahoo) then .KQ
     start_iso = f"{start_dt[:4]}-{start_dt[4:6]}-{start_dt[6:]}"
     end_iso   = f"{end_dt[:4]}-{end_dt[4:6]}-{end_dt[6:]}"
