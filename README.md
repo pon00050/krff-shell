@@ -151,7 +151,7 @@ kr-forensic-finance/
 | `--max-minutes N` | Hard deadline guard; exits cleanly after N minutes |
 | `--sleep S` | Inter-request sleep in seconds (default 0.5; use 0.1 for smoke tests) |
 | `--force` | Extract stage: re-fetch raw files (company_list.parquet, wics.parquet, etc.). Transform stage: delete and rebuild `company_financials.parquet`. |
-| `--stage dart\|transform` | Run a single stage only |
+| `--stage dart\|transform\|cb_bw` | Run a single stage only (default: dart + transform) |
 
 ### Testing
 

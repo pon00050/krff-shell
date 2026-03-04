@@ -51,7 +51,7 @@ docs_cache/
 # 00_Reference — entire directory is private
 # Contains operational knowledge, research findings, competitive analysis,
 # and business intelligence that should never be public.
-# Code, tests, README, CLAUDE.md, BUGS.md, and ROADMAP remain public.
+# Code, tests, README, CLAUDE.md, KNOWN_ISSUES.md, and CONTRIBUTING.md remain public.
 00_Reference/
 
 # Session handoff notes — internal only

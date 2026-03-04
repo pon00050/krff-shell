@@ -2,7 +2,7 @@
 test_pipeline_invariants.py — Guard tests for pipeline correctness invariants.
 
 Three categories per the rationale in KNOWN_ISSUES.md and the project's
-testing philosophy (see 00_Reference/Parallels_Between_Programming_and_Accounting.md):
+testing philosophy:
 
   1. KSIC sample-preservation  — a --sample run must not destroy existing data
   2. Schema contracts           — company_financials columns, dtypes, no financial sector rows
@@ -27,14 +27,6 @@ import pytest
 ROOT      = pathlib.Path(__file__).resolve().parents[1]
 PROCESSED = ROOT / "01_Data" / "processed"
 RAW       = ROOT / "01_Data" / "raw"
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _add_pipeline_to_path():
-    """Add 02_Pipeline/ to sys.path once for the entire test session."""
-    pipeline_dir = str(ROOT / "02_Pipeline")
-    if pipeline_dir not in sys.path:
-        sys.path.insert(0, pipeline_dir)
 
 
 # ─── Category 1: KSIC sample-preservation ────────────────────────────────────

@@ -31,7 +31,7 @@ def run(
     market: str = typer.Option("KOSDAQ", help="Exchange market (KOSDAQ or KOSPI)"),
     start: int = typer.Option(2019, help="Start year"),
     end: int = typer.Option(2023, help="End year"),
-    stage: Optional[str] = typer.Option(None, help="Pipeline stage: dart | transform | cb_bw | all"),
+    stage: Optional[str] = typer.Option(None, help="Pipeline stage: dart | transform | cb_bw (default: dart + transform)"),
     corp_code: Optional[str] = typer.Option(None, help="Single corp_code to process"),
     force: bool = typer.Option(False, "--force", help="Re-download even if cached"),
     sample: Optional[int] = typer.Option(None, help="Limit to N companies (smoke test)"),
