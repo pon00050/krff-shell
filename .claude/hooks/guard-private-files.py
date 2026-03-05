@@ -14,6 +14,8 @@ PRIVATE_PATTERNS = [
     "PRODUCT_VISION.md",
     "company_dives",
     "00_Reference",
+    "PHASE_1_5_PLAN.md",
+    "CLAUDE.md",
 ]
 
 def main():

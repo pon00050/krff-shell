@@ -29,12 +29,12 @@ This project builds that infrastructure layer — so that researchers, journalis
 | Output | Location | EN | 한국어 |
 |---|---|---|---|
 | `beneish_scores.csv` | `03_Analysis/` | Ranked anomaly table with DART links — main deliverable | DART 링크 포함 이상 징후 순위표 — 주요 산출물 |
-| `beneish_scores.parquet` | `01_Data/processed/` | All 8 M-Score components, sector percentiles, CFS/OFS provenance (5,357 rows) | M-Score 8개 구성 요소, 섹터 백분위, CFS/OFS 출처 (5,357행) |
-| `company_financials.parquet` | `01_Data/processed/` | 5-year financials, all KOSDAQ companies (7,042 rows) | 5개년 재무제표, 코스닥 전 상장사 (7,042행) |
-| `cb_bw_events.parquet` | `01_Data/processed/` | CB/BW issuance events from DART DS005 (3,672 rows) | CB/BW 발행 이벤트, DART DS005 (3,672건) |
-| `price_volume.parquet` | `01_Data/processed/` | OHLCV price/volume windows around CB/BW events (245,354 rows) | CB/BW 이벤트 전후 OHLCV 주가/거래량 (245,354행) |
-| `corp_ticker_map.parquet` | `01_Data/processed/` | corp_code ↔ ticker mapping (1,702 rows) | corp_code ↔ 종목코드 매핑 (1,702건) |
-| `officer_holdings.parquet` | `01_Data/processed/` | Officer holding changes (6,958 rows) | 임원 보유 주식 변동 (6,958건) |
+| `beneish_scores.parquet` | `01_Data/processed/` | All 8 M-Score components, sector percentiles, CFS/OFS provenance | M-Score 8개 구성 요소, 섹터 백분위, CFS/OFS 출처 |
+| `company_financials.parquet` | `01_Data/processed/` | 5-year financials, all KOSDAQ companies | 5개년 재무제표, 코스닥 전 상장사 |
+| `cb_bw_events.parquet` | `01_Data/processed/` | CB/BW issuance events from DART DS005 | CB/BW 발행 이벤트, DART DS005 |
+| `price_volume.parquet` | `01_Data/processed/` | OHLCV price/volume windows around CB/BW events | CB/BW 이벤트 전후 OHLCV 주가/거래량 |
+| `corp_ticker_map.parquet` | `01_Data/processed/` | corp_code ↔ ticker mapping | corp_code ↔ 종목코드 매핑 |
+| `officer_holdings.parquet` | `01_Data/processed/` | Officer holding changes | 임원 보유 주식 변동 |
 | `disclosures.parquet` | `01_Data/processed/` | DART filing listings for timing analysis | DART 공시 목록 — 공시 시점 분석용 |
 | `major_holders.parquet` | `01_Data/processed/` | 5%+ ownership threshold filings from DART majorstock.json | 대량보유상황보고서 — 5% 이상 지분 신고 이력 |
 | `bondholder_register.parquet` | `01_Data/processed/` | CB bondholder names and face values from 사채권자명부 sub-documents | CB 사채권자명부 — 권리자명·채권금액 |
@@ -43,8 +43,6 @@ This project builds that infrastructure layer — so that researchers, journalis
 | [`beneish_viz.html` ↗](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
 
 **Visual summary (no Python required):** [beneish_viz.html — Phase 1 결과 보기](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) — interactive Plotly charts, no Python required. / Python 없이 바로 보기.
-
-**Open analytical questions from Phase 1:** Four investigative threads pursuable with existing data — component co-occurrence patterns among Critical flags, genuine vs. structurally-elevated sectors, repeat offenders across years, and CFS/OFS basis effects on flag distribution.
 
 **All four milestones are runnable now.** Run `extract_disclosures.py` first to populate `disclosures.parquet` for Milestone 3.
 
@@ -78,8 +76,8 @@ python 03_Analysis/beneish_screen.py
 **DART API key:** Free at [opendart.fss.or.kr](https://opendart.fss.or.kr). No approval required.
 **DART API 키:** [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료 발급. 별도 심사 없음.
 
-**Runtime:** ~2.5–3 hours for the full KOSDAQ universe (2019–2023). Resumable — re-running skips already-downloaded files.
-**실행 시간:** 코스닥 전체 약 2.5–3시간. 재시작 가능하며 이미 받은 파일은 건너뜁니다.
+**Runtime:** Resumable — re-running skips already-downloaded files.
+**실행 시간:** 재시작 가능하며 이미 받은 파일은 건너뜁니다.
 
 **Smoke test (5 companies, ~3 min):**
 ```bash
@@ -92,11 +90,11 @@ python 03_Analysis/beneish_screen.py
 Outputs are ranked anomaly hypotheses for human review, **not fraud findings**.
 출력물은 사람이 직접 검토해야 할 **이상 징후 가설**입니다.
 
-- **False positive rate ~40% / 위양성 약 40%:** Most flagged companies have legitimate explanations (growth-stage investment, accounting transitions, sector norms). 플래그된 기업 대부분은 정당한 이유가 있습니다.
+- **False positives expected / 위양성 존재:** Most flagged companies have legitimate explanations (growth-stage investment, accounting transitions, sector norms). 플래그된 기업 대부분은 정당한 이유가 있습니다.
 - **Biotech/pharma scores high / 바이오·제약은 구조적 고점수:** Elevated SGI, AQI, DSRI normal for growth-stage biotech; flagged separately. 성장 단계 바이오의 SGI, AQI, DSRI가 높은 건 정상이며, 별도 분류됩니다.
-- **Nature-of-expense filers ~19% / 성격별 분류 ~19%:** GMI and SGAI cannot be computed; set to 1.0 (neutral). GMI·SGAI 산출 불가, 1.0(중립) 처리.
-- **Small-cap gaps / 소형주 공백:** ~23% have no CB/BW history (DART status 013 — expected). 약 23%는 CB/BW 이력 없음 (오류 아님).
-- **CFS vs. OFS mixing / 연결·별도 혼재:** 40–60% file OFS only; switching introduces noise, flagged in outputs. 40–60%가 별도만 제출, 전환 기업은 노이즈 발생, 플래그 표시.
+- **Nature-of-expense filers / 성격별 분류:** Some companies cannot compute GMI and SGAI; set to 1.0 (neutral). 일부 기업은 GMI·SGAI 산출 불가, 1.0(중립) 처리.
+- **Small-cap gaps / 소형주 공백:** Some companies have no CB/BW history (DART status 013 — expected). 일부 기업은 CB/BW 이력 없음 (오류 아님).
+- **CFS vs. OFS mixing / 연결·별도 혼재:** Many companies file OFS only; switching introduces noise, flagged in outputs. 별도만 제출하는 기업이 많으며, 전환 기업은 노이즈 발생, 플래그 표시.
 
 **Outputs are not investment advice, legal opinion, or conclusions about any specific company.**
 **이 프로젝트의 출력물은 투자 조언, 법률 의견, 또는 특정 기업에 대한 결론이 아닙니다.**
@@ -128,7 +126,7 @@ kr-forensic-finance/
 ├── LICENSE
 ├── pyproject.toml
 ├── cli.py                         krff CLI entry point
-├── .env.example                   DART API key + R2 credentials template
+├── .env.example                   API keys + optional cloud storage template
 ├── 00_Reference/                  Local reference docs (not committed)
 ├── 01_Data/
 │   ├── raw/                       From APIs, unmodified (gitignored)
@@ -193,10 +191,10 @@ Three scripts fetch deeper confirmation data for flagged companies. They are **n
 python 02_Pipeline/extract_major_holders.py --sample 20
 
 # Bondholder register — target specific companies by corp_code
-python 02_Pipeline/extract_bondholder_register.py --corp-codes 01051092,01207761
+python 02_Pipeline/extract_bondholder_register.py --corp-codes <corp_code1>,<corp_code2>
 
 # Revenue schedule — defaults to beneish-flagged companies (m_score > -1.78)
-python 02_Pipeline/extract_revenue_schedule.py --corp-codes 01051092,01207761 --years 2021,2022,2023
+python 02_Pipeline/extract_revenue_schedule.py --corp-codes <corp_code1>,<corp_code2> --years 2021,2022,2023
 ```
 
 All three support `--force`, `--sample N`, `--sleep S`, `--max-minutes M`. HTML sub-documents are cached to `01_Data/raw/dart/` so re-runs skip already-fetched filings.
@@ -247,5 +245,5 @@ Full schema spec is maintained locally in `00_Reference/17_MVP_Requirements.md`.
 
 Architecture notes, API research findings, and methodology documentation are maintained locally in `00_Reference/` (not committed to the public repository). Clone the repo and run the pipeline — the code is self-documenting.
 
-For remote execution with Cloudflare R2 storage, R2 is optional — all scripts fall back to local files.
+S3-compatible cloud storage is optional — all scripts fall back to local files.
 

@@ -1,14 +1,11 @@
 # Environment and secrets
 .env
 
-# Raw and processed data — never committed
+# Data — not committed
 01_Data/raw/
 01_Data/processed/
 
-# Verification script results (empirical outputs, not source)
-00_Reference/verify/results/
-
-# Analysis outputs (CSVs, HTML reports, JSON exports)
+# Analysis outputs
 03_Analysis/*.csv
 03_Analysis/cb_bw_timelines/
 03_Analysis/officer_network/
@@ -39,31 +36,24 @@ Thumbs.db
 # Logs
 *.log
 
-# Local Claude Code settings (CLAUDE.md is committed; settings.local.json is not)
+# Local-only Claude Code settings
 .claude/settings.local.json
 
 # Documentation cache
 docs_cache/
 
-# Repo quality assessment and internal action items
-00_Reference/25_GitHub_Repo_Assessment.md
-
-# 00_Reference — entire directory is private
-# Contains operational knowledge, research findings, competitive analysis,
-# and business intelligence that should never be public.
-# Code, tests, README, CLAUDE.md, and CONTRIBUTING.md remain public.
+# Private — local only
 00_Reference/
-
-# Session handoff notes — internal only
-NEXT_SESSION_GITHUB_RELEASE.md
-BUGS.md
-
-# Privatized files — operational knowledge, debugging insights, investigation methodology
-# Removed from git history via git-filter-repo (2026-03-05)
 KNOWN_ISSUES.md
 CHANGELOG.md
 PRODUCT_VISION.md
 03_Analysis/company_dives/
+.claude/CLAUDE.md
+PHASE_1_5_PLAN.md
+
+# Session notes
+NEXT_SESSION_GITHUB_RELEASE.md
+BUGS.md
 
 # PyVis/Marimo JS vendor artifacts
 lib/

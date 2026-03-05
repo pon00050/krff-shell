@@ -7,36 +7,14 @@ from being accidentally committed to this public repository.
 
 ## Table of Contents
 
-1. [Problem Statement](#problem-statement)
-2. [Defense-in-Depth Architecture](#defense-in-depth-architecture)
-3. [Layer 1: `.gitignore`](#layer-1-gitignore)
-4. [Layer 2: Claude Code PreToolUse Hook](#layer-2-claude-code-pretooluse-hook)
-5. [Layer 3: Git Pre-Commit Hook](#layer-3-git-pre-commit-hook)
-6. [Protected Files](#protected-files)
-7. [How It Works End-to-End](#how-it-works-end-to-end)
-8. [Setup for New Contributors](#setup-for-new-contributors)
-9. [Testing the Hooks](#testing-the-hooks)
-10. [Maintenance](#maintenance)
-
----
-
-## Problem Statement
-
-This is a **public GitHub repository**. Several files and directories contain
-sensitive operational data (API research, competitive intelligence, forensic
-investigation scripts, commercial pricing) that must never appear in git history.
-
-These files were removed from git history using `git-filter-repo` and added to
-`.gitignore`. However, `.gitignore` alone is insufficient:
-
-- `git add -f <file>` bypasses `.gitignore` entirely
-- An LLM agent (Claude Code) assists with development and may issue `git add`
-  commands that explicitly name private files, which also bypasses `.gitignore`
-- Manual mistakes happen — a contributor might stage a private file without
-  realizing it
-
-We need **deterministic, automated enforcement** that blocks private files from
-being committed regardless of how they are staged.
+1. [Defense-in-Depth Architecture](#defense-in-depth-architecture)
+2. [Layer 1: `.gitignore`](#layer-1-gitignore)
+3. [Layer 2: Claude Code PreToolUse Hook](#layer-2-claude-code-pretooluse-hook)
+4. [Layer 3: Git Pre-Commit Hook](#layer-3-git-pre-commit-hook)
+5. [How It Works End-to-End](#how-it-works-end-to-end)
+6. [Setup for New Contributors](#setup-for-new-contributors)
+7. [Testing the Hooks](#testing-the-hooks)
+8. [Maintenance](#maintenance)
 
 ---
 
@@ -87,14 +65,14 @@ different failure modes:
 Standard git mechanism. The relevant entries in `.gitignore`:
 
 ```gitignore
-# 00_Reference — entire directory is private
+# Private — local only
 00_Reference/
-
-# Privatized files (removed from history 2026-03-05)
 KNOWN_ISSUES.md
 CHANGELOG.md
 PRODUCT_VISION.md
 03_Analysis/company_dives/
+.claude/CLAUDE.md
+PHASE_1_5_PLAN.md
 ```
 
 **Scope:** Prevents unintentional staging via wildcard commands (`git add .`,
@@ -291,24 +269,6 @@ manually (see [Setup for New Contributors](#setup-for-new-contributors)).
 
 ---
 
-## Protected Files
-
-The following files and directories are protected by all three layers:
-
-| Path | Type | Contains |
-|---|---|---|
-| `KNOWN_ISSUES.md` | File | Data gaps, API workarounds, debugging insights (KI-001–KI-017) |
-| `CHANGELOG.md` | File | Session-by-session development history |
-| `PRODUCT_VISION.md` | File | Tier 1 leads, confirmable questions, commercial pricing |
-| `03_Analysis/company_dives/` | Directory | Per-company forensic investigation scripts |
-| `00_Reference/` | Directory | Operational knowledge, API research, competitive analysis |
-
-> **Note:** `01_Data/` is also gitignored but not included in the hook patterns
-> because it contains large binary files that git would reject on size alone,
-> and it has never been tracked.
-
----
-
 ## How It Works End-to-End
 
 ### Scenario A: Claude Code session — normal workflow
@@ -460,9 +420,7 @@ To protect a new file or directory:
    `PRIVATE_PATTERNS` list
 3. **Add to `.git/hooks/pre-commit`** — add the pattern to the
    `PRIVATE_PATTERNS` array
-4. **Update `.claude/CLAUDE.md`** — add to the "What is private" list
-5. **Commit** `.gitignore`, `.claude/hooks/guard-private-files.py`, and
-   `.claude/CLAUDE.md`
+4. **Commit** `.gitignore` and `.claude/hooks/guard-private-files.py`
 
 ### Removing a protected file
 
