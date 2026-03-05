@@ -28,6 +28,15 @@
 2. **Populate paid-tier tables** — run paid-tier extractors at scale for flagged companies
 3. **Statistical analysis layer** — 10 ISL-grade scripts written; S1–S5 complete (session 24); findings in `FINDINGS.md`
 
+## Statistical Analysis — Completed (Session 25)
+
+| ID | Description | Outcome |
+|---|---|---|
+| S9 | Cross-screen: PC3 top-decile × flagged CB/BW events | **139 double-flagged company-years; 112 unique secondary companies** — all have flag_count=1 (volume_surge only); 0 high-priority secondaries (flag_count≥2 + PC3≥95th); S8 runs at default scope; `double_flagged_companies.csv` produced |
+| S8 | Run `extract_depreciation_schedule.py` for 5 Tier 1 leads | All 15 rows = parse_error or no_filing; DART sub_docs keyword matching returns wrong table type for these companies; Category 20 tests flip from 8 skipped → **8 passed**; FINDINGS.md §4 updated with root cause |
+| S10a | Extract disclosures for 50 unflagged control companies | `disclosures.parquet` expanded from 8 → **58 corp_codes** (3,581 → 27,486 rows; +23,905 control rows) |
+| S10b | Rebuild FDR null from control disclosures × price data | Control null: 2,000 quiet events; **687/687 test events trivially survive BH** — because timing_anomalies.csv is pre-filtered to ≥5% events, any clean null < 1% gives p≈0 for all; valid FDR test requires unfiltered disclosure dataset (new S11) |
+
 ## Statistical Analysis — Completed (Session 24)
 
 | ID | Description | Outcome |
@@ -40,20 +49,18 @@
 
 ## Statistical Analysis — Remaining Action Items
 
+### Ready now (no external dependencies)
+
+| ID | Description | Effort | Notes |
+|---|---|---|---|
+| S11 | Proper FDR test: compute price_change_pct for ALL 3,581 flagged-company disclosures; test whether flagged companies' disclosure-day price changes are systematically higher than 50 control companies at q≤0.05 | 1 day | S10b revealed that testing pre-filtered extreme events against a clean null is trivially significant; valid test needs unfiltered input for both test and null |
+
 ### Blocked (external dependencies)
 
 | ID | Description | Blocked by |
 |---|---|---|
 | S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation |
 | S7 | Expand `labels.csv` to ≥10 rows → unlock `bootstrap_threshold.py`, `lasso_beneish.py`, `rf_feature_importance.py` | Labeling decision |
-
-### New action items (from session 24 findings)
-
-| ID | Description | Effort | Blocked by |
-|---|---|---|---|
-| S8 | Run `extract_depreciation_schedule.py` for 5 Tier 1 leads; update `FINDINGS.md` §4 with results | 1–2 hours | DART API (already active) |
-| S9 | Join `pca_pc3_scores.csv` (PC3 top decile) against `cb_bw_summary.csv`; identify double-flagged secondary targets | 2 hours | Nothing |
-| S10 | Extend `fdr_timing_anomalies.py` to build null from full `disclosures.parquet` + `price_volume.parquet` join | 1 day | Nothing |
 
 ## Open Backlog
 
