@@ -210,6 +210,44 @@ def test_ac7_reproducibility():
     assert scores["flag"].notna().all(), "AC7 FAIL: flag column has nulls"
 
 
+# ─── Phase 2 output file checks ──────────────────────────────────────────────
+
+def test_phase2_cb_bw_summary():
+    """cb_bw_summary.csv exists with required columns and non-zero rows."""
+    p = ROOT / "03_Analysis" / "cb_bw_summary.csv"
+    if not p.exists():
+        pytest.skip("cb_bw_summary.csv not found — run 03_Analysis/run_cb_bw_timelines.py")
+    df = pd.read_csv(p, encoding="utf-8-sig")
+    required = {"corp_code", "anomaly_score", "flag_count"}
+    missing = required - set(df.columns)
+    assert not missing, f"cb_bw_summary.csv missing columns: {missing}"
+    assert len(df) > 0, "cb_bw_summary.csv has 0 rows"
+
+
+def test_phase2_timing_anomalies():
+    """timing_anomalies.csv exists with required columns."""
+    p = ROOT / "03_Analysis" / "timing_anomalies.csv"
+    if not p.exists():
+        pytest.skip("timing_anomalies.csv not found — run 03_Analysis/run_timing_anomalies.py")
+    df = pd.read_csv(p, encoding="utf-8-sig")
+    required = {"corp_code", "filing_date", "price_change_pct", "volume_ratio", "anomaly_score", "flag"}
+    missing = required - set(df.columns)
+    assert not missing, f"timing_anomalies.csv missing columns: {missing}"
+    # Row count may be 0 if disclosure/price data date ranges don't overlap
+
+
+def test_phase2_officer_network():
+    """centrality_report.csv exists with required columns."""
+    p = ROOT / "03_Analysis" / "officer_network" / "centrality_report.csv"
+    if not p.exists():
+        pytest.skip("centrality_report.csv not found — run 03_Analysis/run_officer_network.py")
+    df = pd.read_csv(p, encoding="utf-8-sig")
+    required = {"person_name", "company_count", "betweenness_centrality"}
+    missing = required - set(df.columns)
+    assert not missing, f"centrality_report.csv missing columns: {missing}"
+    # Row count may be 0 if officer_holdings has no officer names (known data gap)
+
+
 # ─── Top-50 spot check (session-scoped side effect) ──────────────────────────
 
 @pytest.fixture(scope="module", autouse=True)

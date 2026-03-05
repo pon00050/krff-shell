@@ -9,11 +9,20 @@ Usage:
 
 from __future__ import annotations
 
+import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+# Windows: force UTF-8 stdout/stderr so Korean company names don't crash cp1252
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass  # Python < 3.7 fallback
 
 app = typer.Typer(
     name="krff",
