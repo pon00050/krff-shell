@@ -34,6 +34,7 @@ import os
 import sys
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -290,6 +291,26 @@ def _match_to_event(
     return matched
 
 
+def _fetch_or_load_cache(
+    cache_path: Path,
+    fetch_fn: Callable[[], list[dict]],
+    force: bool,
+    dry_run: bool,
+    sleep: float,
+) -> list[dict]:
+    """Return cached data if available, otherwise fetch, cache, and return."""
+    if not force and cache_path.exists():
+        with open(cache_path, encoding="utf-8") as f:
+            return json.load(f)
+    if dry_run:
+        return []
+    data = fetch_fn()
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    time.sleep(sleep)
+    return data
+
+
 def enrich_cb_bw_parquet(
     force: bool = False,
     sample: int | None = None,
@@ -325,7 +346,7 @@ def enrich_cb_bw_parquet(
     else:
         # Only enrich rows that still have empty arrays
         mask = df["repricing_history"].apply(
-            lambda x: json.loads(x) == [] if isinstance(x, str) else True
+            lambda x: x == "[]" if isinstance(x, str) else True
         )
         corps_to_enrich = df.loc[mask, "corp_code"].unique().tolist()
 
@@ -351,27 +372,16 @@ def enrich_cb_bw_parquet(
         repr_cache = repricing_cache_dir / f"{corp_code}.json"
         exer_cache = exercise_cache_dir / f"{corp_code}.json"
 
-        if not force and repr_cache.exists():
-            with open(repr_cache, encoding="utf-8") as f:
-                repricings = json.load(f)
-        elif dry_run:
-            repricings = []
-        else:
-            repricings = fetch_repricing_for_company(corp_code, api_key)
-            with open(repr_cache, "w", encoding="utf-8") as f:
-                json.dump(repricings, f, ensure_ascii=False, indent=2)
-            time.sleep(sleep)
-
-        if not force and exer_cache.exists():
-            with open(exer_cache, encoding="utf-8") as f:
-                exercises = json.load(f)
-        elif dry_run:
-            exercises = []
-        else:
-            exercises = fetch_exercises_for_company(corp_code, api_key)
-            with open(exer_cache, "w", encoding="utf-8") as f:
-                json.dump(exercises, f, ensure_ascii=False, indent=2)
-            time.sleep(sleep)
+        repricings = _fetch_or_load_cache(
+            repr_cache,
+            lambda cc=corp_code: fetch_repricing_for_company(cc, api_key),
+            force, dry_run, sleep,
+        )
+        exercises = _fetch_or_load_cache(
+            exer_cache,
+            lambda cc=corp_code: fetch_exercises_for_company(cc, api_key),
+            force, dry_run, sleep,
+        )
 
         repricing_by_corp[corp_code] = repricings
         exercise_by_corp[corp_code] = exercises
@@ -380,27 +390,32 @@ def enrich_cb_bw_parquet(
         log.info("--dry-run complete. No parquet updated.")
         return df
 
-    # Write enriched data back to parquet
+    # Write enriched data back to parquet — collect all updates first, then
+    # assign both columns in two bulk operations instead of two df.at[] per row.
     enriched_count = 0
+    repricing_updates: dict[int, str] = {}
+    exercise_updates: dict[int, str] = {}
+
     for idx, row in df.iterrows():
         corp_code = row["corp_code"]
         if corp_code not in repricing_by_corp:
             continue
 
         issue_date = str(row.get("issue_date", ""))
-
         repricings = _match_to_event(
             repricing_by_corp[corp_code], issue_date, date_key="date"
         )
         exercises = _match_to_event(
             exercise_by_corp[corp_code], issue_date, date_key="exercise_date"
         )
-
-        df.at[idx, "repricing_history"] = json.dumps(repricings, ensure_ascii=False)
-        df.at[idx, "exercise_events"] = json.dumps(exercises, ensure_ascii=False)
-
+        repricing_updates[idx] = json.dumps(repricings, ensure_ascii=False)
+        exercise_updates[idx] = json.dumps(exercises, ensure_ascii=False)
         if repricings or exercises:
             enriched_count += 1
+
+    if repricing_updates:
+        df.loc[list(repricing_updates), "repricing_history"] = pd.Series(repricing_updates)
+        df.loc[list(exercise_updates), "exercise_events"] = pd.Series(exercise_updates)
 
     df.to_parquet(cb_path, index=False)
     log.info(

@@ -52,6 +52,7 @@ PROCESSED = ROOT / "01_Data" / "processed"
 DART_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
 SLEEP_DEFAULT = 0.5
 PAGE_COUNT = 100
+DISCLOSURE_COLS = ["corp_code", "rcept_no", "filed_at", "title", "type", "dart_link"]
 
 
 def _dart_api_key() -> str:
@@ -189,8 +190,7 @@ def _fetch_priority_disclosures(
         time.sleep(sleep)
 
     if new_rows:
-        columns = ["corp_code", "rcept_no", "filed_at", "title", "type", "dart_link"]
-        df_new = pd.DataFrame(new_rows, columns=columns)
+        df_new = pd.DataFrame(new_rows, columns=DISCLOSURE_COLS)
         df_merged = pd.concat([existing, df_new], ignore_index=True)
         df_merged = df_merged.drop_duplicates(subset=["corp_code", "rcept_no"])
         df_merged.to_parquet(out, index=False)
@@ -273,11 +273,10 @@ def fetch_disclosures(
         all_rows.extend(rows)
         time.sleep(sleep)
 
-    columns = ["corp_code", "rcept_no", "filed_at", "title", "type", "dart_link"]
     df = (
-        pd.DataFrame(all_rows, columns=columns)
+        pd.DataFrame(all_rows, columns=DISCLOSURE_COLS)
         if all_rows
-        else pd.DataFrame(columns=columns)
+        else pd.DataFrame(columns=DISCLOSURE_COLS)
     )
 
     before = len(df)
