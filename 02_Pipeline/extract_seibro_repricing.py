@@ -313,6 +313,7 @@ def _fetch_or_load_cache(
 
 def enrich_cb_bw_parquet(
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     sleep: float = SLEEP_DEFAULT,
     dry_run: bool = False,
@@ -341,7 +342,7 @@ def enrich_cb_bw_parquet(
         log.info("--dry-run: no API calls will be made")
 
     # Identify corp_codes to enrich
-    if force:
+    if force or rebuild:
         corps_to_enrich = df["corp_code"].unique().tolist()
     else:
         # Only enrich rows that still have empty arrays
@@ -434,6 +435,10 @@ def main() -> None:
         help="Re-fetch for all corp_codes, even those already enriched",
     )
     parser.add_argument(
+        "--rebuild", action="store_true",
+        help="Re-enrich all corp_codes from cached raw files without re-fetching from API",
+    )
+    parser.add_argument(
         "--sample", type=int, default=None,
         help="Limit to first N corp_codes (for testing)",
     )
@@ -449,6 +454,7 @@ def main() -> None:
 
     enrich_cb_bw_parquet(
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         sleep=args.sleep,
         dry_run=args.dry_run,

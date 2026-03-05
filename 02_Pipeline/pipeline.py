@@ -121,6 +121,7 @@ def run_stage_dart(
     stage: str | None,
     corp_code: str | None,
     force: bool,
+    rebuild: bool = False,
     sample: int | None = None,
     max_minutes: float | None = None,
     sleep: float | None = None,
@@ -157,19 +158,19 @@ def run_stage_dart(
         corp_name = comp_row.iloc[0]["corp_name"]
         years = list(range(start, end + 1))
         results = ed.fetch_financials_for_company(
-            corp_code, corp_name, years, dart, force=force
+            corp_code, corp_name, years, dart, force=force, rebuild=rebuild
         )
         log.info("Results for %s: %s", corp_code, results)
         return
 
     if stage in (None, "company-list"):
-        ed.fetch_company_list(market=market, force=force)
+        ed.fetch_company_list(market=market, force=force, rebuild=rebuild)
 
     if stage in (None, "financials"):
         companies = ed.fetch_company_list(market=market, force=False)
         summary = ed.fetch_all_financials(
             companies, start_year=start, end_year=end,
-            force=force, sample=sample, max_minutes=max_minutes,
+            force=force, rebuild=rebuild, sample=sample, max_minutes=max_minutes,
         )
         # Write run summary — merge with existing if this is a resumed run
         import json
@@ -190,12 +191,13 @@ def run_stage_dart(
 
     if stage in (None, "sector"):
         companies = ed.fetch_company_list(market=market, force=False)
-        ed.fetch_wics(force=force, year=end)
-        ed.fetch_ksic(companies, force=force, sample=sample)
+        ed.fetch_wics(force=force, rebuild=rebuild, year=end)
+        ed.fetch_ksic(companies, force=force, rebuild=rebuild, sample=sample)
 
 
 def run_stage_cb_bw(
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     sleep: float | None = None,
     max_minutes: float | None = None,
@@ -226,7 +228,7 @@ def run_stage_cb_bw(
     import extract_major_holders as emh
 
     log.info("=== Stage: cb_bw (major holders / 대량보유보고) ===")
-    emh.fetch_major_holders(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
+    emh.fetch_major_holders(force=force, rebuild=rebuild, sample=sample, sleep=_sleep, max_minutes=max_minutes)
 
     import extract_disclosures as edisc
 
@@ -237,12 +239,12 @@ def run_stage_cb_bw(
 
     log.info("=== Stage: cb_bw (SEIBRO repricing + exercise enrichment) ===")
     try:
-        eseibro.enrich_cb_bw_parquet(force=force, sample=sample, sleep=_sleep)
+        eseibro.enrich_cb_bw_parquet(force=force, rebuild=rebuild, sample=sample, sleep=_sleep)
     except EnvironmentError as exc:
         log.warning("SEIBRO enrichment skipped — %s", exc)
 
 
-def run_stage_transform(start: int, end: int, sample: int | None = None, force: bool = False) -> None:
+def run_stage_transform(start: int, end: int, sample: int | None = None, force: bool = False, rebuild: bool = False) -> None:
     """Run transform.py to build company_financials.parquet."""
     import transform as tr
     log.info("=== Stage: transform (%d–%d) ===", start, end)
@@ -256,6 +258,7 @@ def run(
     stage: str | None = None,
     corp_code: str | None = None,
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     max_minutes: float | None = None,
     sleep: float | None = None,
@@ -277,30 +280,30 @@ def run(
         log.info("=== Stage: dart ===")
         run_stage_dart(
             market, start, end, stage=None, corp_code=corp_code,
-            force=force, sample=sample, max_minutes=max_minutes, sleep=sleep,
-            wics_date=wics_date,
+            force=force, rebuild=rebuild, sample=sample, max_minutes=max_minutes,
+            sleep=sleep, wics_date=wics_date,
         )
         return
 
     if stage == "transform":
-        run_stage_transform(start, end, sample=sample, force=force)
+        run_stage_transform(start, end, sample=sample, force=force, rebuild=rebuild)
         return
 
     if stage == "cb_bw":
         log.info("=== Stage: cb_bw ===")
-        run_stage_cb_bw(force=force, sample=sample, sleep=sleep, max_minutes=max_minutes, scoped=scoped, top_n=top_n)
+        run_stage_cb_bw(force=force, rebuild=rebuild, sample=sample, sleep=sleep, max_minutes=max_minutes, scoped=scoped, top_n=top_n)
         return
 
     # Full Phase 1 pipeline: dart → transform
     log.info("=== Stage: dart ===")
     run_stage_dart(
         market, start, end, stage=None, corp_code=corp_code,
-        force=force, sample=sample, max_minutes=max_minutes, sleep=sleep,
-        wics_date=wics_date,
+        force=force, rebuild=rebuild, sample=sample, max_minutes=max_minutes,
+        sleep=sleep, wics_date=wics_date,
     )
 
     log.info("=== Stage: transform ===")
-    run_stage_transform(start, end, sample=sample, force=force)
+    run_stage_transform(start, end, sample=sample, force=force, rebuild=rebuild)
 
     log.info("=== Phase 1 pipeline complete ===")
     log.info(
@@ -367,6 +370,11 @@ Examples:
         help="Re-fetch all data even if output files already exist",
     )
     parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild parquets from cached raw files without re-fetching from API",
+    )
+    parser.add_argument(
         "--sample",
         type=int,
         default=None,
@@ -420,6 +428,7 @@ Examples:
         stage=args.stage,
         corp_code=args.corp_code,
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         max_minutes=args.max_minutes,
         sleep=args.sleep,

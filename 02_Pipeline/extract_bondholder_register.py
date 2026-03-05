@@ -263,6 +263,7 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
 
 def fetch_bondholder_register(
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     sleep: float = SLEEP_DEFAULT,
     max_minutes: float | None = None,
@@ -282,8 +283,8 @@ def fetch_bondholder_register(
         raise ImportError("opendartreader is required: uv add opendartreader")
 
     out = PROCESSED / "bondholder_register.parquet"
-    if out.exists() and not force and corp_codes_filter is None:
-        log.info("bondholder_register.parquet exists, loading cached (use --force to refresh)")
+    if out.exists() and not force and not rebuild and corp_codes_filter is None:
+        log.info("bondholder_register.parquet exists, loading cached (use --force or --rebuild to refresh)")
         return pd.read_parquet(out)
 
     cb_path = PROCESSED / "cb_bw_events.parquet"
@@ -402,7 +403,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch 사채권자명부 (bondholder register) from DART CB filings"
     )
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-fetch all data from API (overwrites cache + parquet)")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Rebuild parquet from cached raw files without re-fetching from API")
     parser.add_argument("--sample", type=int, default=None)
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
     parser.add_argument("--max-minutes", type=float, default=None)
@@ -428,6 +432,7 @@ def main():
 
     fetch_bondholder_register(
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         sleep=args.sleep,
         max_minutes=args.max_minutes,

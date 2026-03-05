@@ -231,7 +231,7 @@ def _dart() -> OpenDartReader:
 # Stage 1: Company list
 # ---------------------------------------------------------------------------
 
-def fetch_company_list(market: str = "KOSDAQ", force: bool = False, ref_date: str | None = None) -> pd.DataFrame:
+def fetch_company_list(market: str = "KOSDAQ", force: bool = False, rebuild: bool = False, ref_date: str | None = None) -> pd.DataFrame:
     """
     Build the active company universe for `market` and write to
     01_Data/raw/company_list.parquet.
@@ -247,7 +247,7 @@ def fetch_company_list(market: str = "KOSDAQ", force: bool = False, ref_date: st
     ref_date: YYYYMMDD reference date for PyKRX ticker list. Defaults to KOSDAQ_REF_DATE.
     """
     out = RAW / "company_list.parquet"
-    if out.exists() and not force:
+    if out.exists() and not force and not rebuild:
         log.info("company_list.parquet exists, loading cached (use --force to refresh)")
         return pd.read_parquet(out)
 
@@ -320,6 +320,7 @@ def fetch_financials_for_company(
     years: list[int],
     dart: OpenDartReader,
     force: bool = False,
+    rebuild: bool = False,
 ) -> dict[int, str]:
     """
     Fetch annual financial statements for one company across all requested years.
@@ -341,7 +342,7 @@ def fetch_financials_for_company(
     for year in years:
         out = RAW_FINANCIALS / f"{corp_code}_{year}.parquet"
 
-        if out.exists() and not force:
+        if out.exists() and not force and not rebuild:
             try:
                 meta = pd.read_parquet(out, columns=["_fs_type"])
                 results[year] = str(meta["_fs_type"].iloc[0]) if len(meta) else "CFS"
@@ -406,6 +407,7 @@ def fetch_all_financials(
     start_year: int,
     end_year: int,
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     max_minutes: float | None = None,
 ) -> dict:
@@ -466,7 +468,7 @@ def fetch_all_financials(
 
         try:
             year_results = fetch_financials_for_company(
-                corp_code, corp_name, years, dart, force=force
+                corp_code, corp_name, years, dart, force=force, rebuild=rebuild
             )
         except Exception as exc:
             log.error("Unexpected error for %s: %s", corp_code, exc)
@@ -495,7 +497,7 @@ def fetch_all_financials(
 # Stage 3: Sector -- WICS
 # ---------------------------------------------------------------------------
 
-def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False, year: int | None = None) -> pd.DataFrame:
+def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False, rebuild: bool = False, year: int | None = None) -> pd.DataFrame:
     """
     Fetch WICS industry group memberships for all 25 groups.
     Writes 01_Data/raw/sector/wics.parquet.
@@ -510,7 +512,7 @@ def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False, yea
         snapshot_date = _last_trading_day_of_year(year)
         log.info("fetch_wics: year=%d → snapshot_date=%s", year, snapshot_date)
     out = RAW_SECTOR / "wics.parquet"
-    if out.exists() and not force:
+    if out.exists() and not force and not rebuild:
         log.info("wics.parquet exists (use --force to refresh)")
         return pd.read_parquet(out)
 
@@ -566,6 +568,7 @@ def fetch_wics(snapshot_date: str = WICS_SNAPSHOT_DATE, force: bool = False, yea
 def fetch_ksic(
     companies: pd.DataFrame,
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
 ) -> pd.DataFrame:
     """
@@ -585,7 +588,7 @@ def fetch_ksic(
 
     # Load existing to resume without re-fetching
     existing: dict[str, str] = {}
-    if out.exists() and not force:
+    if out.exists() and not force and not rebuild:
         try:
             df_ex = pd.read_parquet(out)
             existing = dict(zip(
@@ -606,7 +609,7 @@ def fetch_ksic(
     for i, row in enumerate(ksic_iter, 1):
         corp_code = str(row.corp_code)
 
-        if corp_code in existing and not force:
+        if corp_code in existing and not force and not rebuild:
             rows.append({"corp_code": corp_code, "induty_code": existing[corp_code]})
             continue
 
@@ -662,6 +665,7 @@ def run(
     stage: str | None = None,
     corp_code: str | None = None,
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     max_minutes: float | None = None,
     wics_date: str | None = None,
@@ -675,7 +679,7 @@ def run(
     ref_date = _last_trading_day_of_year(end_year)
 
     if stage == "company-list":
-        fetch_company_list(market, force=force, ref_date=ref_date)
+        fetch_company_list(market, force=force, rebuild=rebuild, ref_date=ref_date)
 
     elif stage == "financials":
         companies = fetch_company_list(market, force=False)
@@ -689,11 +693,11 @@ def run(
                 companies["corp_code"] == corp_code, "corp_name"
             ]
             corp_name = corp_name_series.iloc[0] if not corp_name_series.empty else corp_code
-            fetch_financials_for_company(corp_code, corp_name, years, dart, force=force)
+            fetch_financials_for_company(corp_code, corp_name, years, dart, force=force, rebuild=rebuild)
         else:
             summary = fetch_all_financials(
                 companies, start_year, end_year,
-                force=force, sample=sample, max_minutes=max_minutes,
+                force=force, rebuild=rebuild, sample=sample, max_minutes=max_minutes,
             )
             RAW.mkdir(parents=True, exist_ok=True)
             summary["counts"] = {
@@ -713,15 +717,15 @@ def run(
         if companies.empty:
             log.error("Company list empty. Run --stage company-list first.")
             return
-        fetch_wics(force=force, year=end_year)
-        fetch_ksic(companies, force=force, sample=sample)
+        fetch_wics(force=force, rebuild=rebuild, year=end_year)
+        fetch_ksic(companies, force=force, rebuild=rebuild, sample=sample)
 
     else:
         # Full run: all stages
-        companies = fetch_company_list(market, force=force, ref_date=ref_date)
+        companies = fetch_company_list(market, force=force, rebuild=rebuild, ref_date=ref_date)
         summary = fetch_all_financials(
             companies, start_year, end_year,
-            force=force, sample=sample, max_minutes=max_minutes,
+            force=force, rebuild=rebuild, sample=sample, max_minutes=max_minutes,
         )
         RAW.mkdir(parents=True, exist_ok=True)
         summary["counts"] = {
@@ -735,8 +739,8 @@ def run(
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2, default=str)
         log.info("Financials summary: %s", summary["counts"])
-        fetch_wics(force=force, year=end_year)
-        fetch_ksic(companies, force=force, sample=sample)
+        fetch_wics(force=force, rebuild=rebuild, year=end_year)
+        fetch_ksic(companies, force=force, rebuild=rebuild, sample=sample)
         log.info("=== extract_dart complete ===")
 
 
@@ -784,6 +788,11 @@ Examples:
         help="Overwrite existing raw files (default: skip existing)",
     )
     parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild parquets from cached raw files without re-fetching from API",
+    )
+    parser.add_argument(
         "--sample",
         type=int,
         default=None,
@@ -822,6 +831,7 @@ Examples:
         stage=args.stage,
         corp_code=args.corp_code,
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         max_minutes=args.max_minutes,
         wics_date=args.wics_date,

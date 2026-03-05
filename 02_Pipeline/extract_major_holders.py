@@ -148,6 +148,7 @@ def _fetch_majorstock(
 
 def fetch_major_holders(
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     sleep: float = SLEEP_DEFAULT,
     max_minutes: float | None = None,
@@ -157,8 +158,8 @@ def fetch_major_holders(
     Writes 01_Data/processed/major_holders.parquet.
     """
     out = PROCESSED / "major_holders.parquet"
-    if out.exists() and not force:
-        log.info("major_holders.parquet exists, loading cached (use --force to refresh)")
+    if out.exists() and not force and not rebuild:
+        log.info("major_holders.parquet exists, loading cached (use --force or --rebuild to refresh)")
         return pd.read_parquet(out)
 
     cb_path = PROCESSED / "cb_bw_events.parquet"
@@ -211,7 +212,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch 대량보유상황보고서 (5%+ ownership filings) from DART majorstock"
     )
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-fetch all data from API (overwrites cache + parquet)")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Rebuild parquet from cached raw files without re-fetching from API")
     parser.add_argument("--sample", type=int, default=None)
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
     parser.add_argument("--max-minutes", type=float, default=None)
@@ -219,6 +223,7 @@ def main():
 
     fetch_major_holders(
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         sleep=args.sleep,
         max_minutes=args.max_minutes,

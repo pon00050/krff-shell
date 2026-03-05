@@ -275,6 +275,7 @@ def _parse_revenue_table(html: str, report_year: int) -> list[dict] | None:
 
 def fetch_revenue_schedule(
     force: bool = False,
+    rebuild: bool = False,
     sample: int | None = None,
     sleep: float = SLEEP_DEFAULT,
     max_minutes: float | None = None,
@@ -295,8 +296,8 @@ def fetch_revenue_schedule(
         raise ImportError("opendartreader is required: uv add opendartreader")
 
     out = PROCESSED / "revenue_schedule.parquet"
-    if out.exists() and not force and corp_codes_filter is None:
-        log.info("revenue_schedule.parquet exists, loading cached (use --force to refresh)")
+    if out.exists() and not force and not rebuild and corp_codes_filter is None:
+        log.info("revenue_schedule.parquet exists, loading cached (use --force or --rebuild to refresh)")
         return pd.read_parquet(out)
 
     if years is None:
@@ -425,7 +426,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch 매출명세서 (revenue schedule) from DART 사업보고서"
     )
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-fetch all data from API (overwrites cache + parquet)")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Rebuild parquet from cached raw files without re-fetching from API")
     parser.add_argument("--sample", type=int, default=None)
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
     parser.add_argument("--max-minutes", type=float, default=None)
@@ -452,6 +456,7 @@ def main():
 
     fetch_revenue_schedule(
         force=args.force,
+        rebuild=args.rebuild,
         sample=args.sample,
         sleep=args.sleep,
         max_minutes=args.max_minutes,
