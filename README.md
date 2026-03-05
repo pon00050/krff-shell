@@ -36,6 +36,9 @@ This project builds that infrastructure layer — so that researchers, journalis
 | `corp_ticker_map.parquet` | `01_Data/processed/` | corp_code ↔ ticker mapping (1,702 rows) | corp_code ↔ 종목코드 매핑 (1,702건) |
 | `officer_holdings.parquet` | `01_Data/processed/` | Officer holding changes (6,958 rows) | 임원 보유 주식 변동 (6,958건) |
 | `disclosures.parquet` | `01_Data/processed/` | DART filing listings for timing analysis | DART 공시 목록 — 공시 시점 분석용 |
+| `major_holders.parquet` | `01_Data/processed/` | 5%+ ownership threshold filings from DART majorstock.json | 대량보유상황보고서 — 5% 이상 지분 신고 이력 |
+| `bondholder_register.parquet` | `01_Data/processed/` | CB bondholder names and face values from 사채권자명부 sub-documents | CB 사채권자명부 — 권리자명·채권금액 |
+| `revenue_schedule.parquet` | `01_Data/processed/` | Revenue by customer/segment from 매출명세서 in 사업보고서 | 매출명세서 — 고객·품목별 매출 |
 | `dart_xbrl_crosswalk.csv` | `tests/fixtures/` | XBRL element → variable mapping; audit trail | XBRL 요소 → 재무 변수 매핑; 감사 추적 |
 | [`beneish_viz.html` ↗](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
 
@@ -140,7 +143,10 @@ kr-forensic-finance/
 │   ├── extract_price_volume.py    KRX/FDR/yfinance OHLCV
 │   ├── extract_officer_holdings.py DART officer holding changes
 │   ├── extract_disclosures.py     DART filing listings (list.json)
-│   ├── extract_seibro.py          SEIBRO CB/BW repricing (Playwright)
+│   ├── extract_major_holders.py   DART majorstock.json → major_holders.parquet
+│   ├── extract_bondholder_register.py  DART sub_docs → 사채권자명부 HTML parse
+│   ├── extract_revenue_schedule.py     DART sub_docs → 매출명세서 HTML parse
+│   ├── extract_seibro_repricing.py SEIBRO CB/BW repricing via data.go.kr API
 │   ├── extract_krx.py             KRX short selling balances
 │   ├── extract_kftc.py            KFTC cross-shareholding
 │   └── transform.py               raw → company_financials.parquet
@@ -168,6 +174,29 @@ kr-forensic-finance/
 ### How the Scripts Fit Together
 
 `pipeline.py` orchestrates `extract_dart.py` → `transform.py` in sequence. Don't call them directly — `pipeline.py` propagates flags (`--sample`, `--start`, `--end`) consistently. After the pipeline finishes, run `beneish_screen.py` separately. The pipeline is resumable: re-running skips files already on disk.
+
+### Standalone Paid-Tier Extractors
+
+Three scripts fetch deeper confirmation data for flagged companies. They are **not run by `pipeline.py`** — invoke them directly after the main pipeline has populated `cb_bw_events.parquet` and `beneish_scores.parquet`.
+
+| Script | Output | What it fetches |
+|---|---|---|
+| `extract_major_holders.py` | `major_holders.parquet` | 대량보유상황보고서 — full 5%+ ownership threshold filing history per company |
+| `extract_bondholder_register.py` | `bondholder_register.parquet` | 사채권자명부 — CB bondholder names and face values from DART sub-documents |
+| `extract_revenue_schedule.py` | `revenue_schedule.parquet` | 매출명세서 — revenue by customer/segment from 사업보고서 |
+
+```bash
+# Major holders — wired into pipeline; also runnable standalone
+python 02_Pipeline/extract_major_holders.py --sample 20
+
+# Bondholder register — target specific companies by corp_code
+python 02_Pipeline/extract_bondholder_register.py --corp-codes 01051092,01207761
+
+# Revenue schedule — defaults to beneish-flagged companies (m_score > -1.78)
+python 02_Pipeline/extract_revenue_schedule.py --corp-codes 01051092,01207761 --years 2021,2022,2023
+```
+
+All three support `--force`, `--sample N`, `--sleep S`, `--max-minutes M`. HTML sub-documents are cached to `01_Data/raw/dart/` so re-runs skip already-fetched filings. See `KNOWN_ISSUES.md` KI-014 and KI-015 for known parse-rate limitations.
 
 ### Pipeline Flags
 
