@@ -234,10 +234,14 @@ PRIVATE_PATTERNS=(
   "CHANGELOG.md"
   "PRODUCT_VISION.md"
   "03_Analysis/company_dives/"
+  "03_Analysis/NETWORK_FINDINGS.md"
   "00_Reference/"
+  "PHASE_1_5_PLAN.md"
+  ".claude/CLAUDE.md"
 )
 
-STAGED=$(git diff --cached --name-only)
+# Only check Added/Copied/Modified/Renamed — allow deletions (git rm --cached)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
 
 for pattern in "${PRIVATE_PATTERNS[@]}"; do
   if echo "$STAGED" | grep -q "$pattern"; then
@@ -253,8 +257,10 @@ exit 0
 ### How it works
 
 1. **Trigger:** Git calls this script automatically before creating a commit
-2. **Inspection:** `git diff --cached --name-only` lists all staged file paths
-3. **Pattern matching:** Each staged path is checked against the 5 private
+2. **Inspection:** `git diff --cached --name-only --diff-filter=ACMR` lists
+   staged file paths, excluding deletions. This allows `git rm --cached` to
+   untrack private files without triggering the hook.
+3. **Pattern matching:** Each staged path is checked against the private
    patterns using `grep` substring matching
 4. **Decision:**
    - Match found → print error with remediation instructions, exit 1 (abort
