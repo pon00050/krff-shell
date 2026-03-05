@@ -14,7 +14,7 @@ The four analysis milestones live in `03_Analysis/`:
 | `officer_network.py` | Implemented, runnable | Officer network graph across flagged companies |
 
 To implement a planned milestone:
-1. Read the stub file and the corresponding section in the technical architecture doc (local: `00_Reference/04_Technical_Architecture.md`)
+1. Read the analysis script and the corresponding section in the technical architecture doc (local: `00_Reference/04_Technical_Architecture.md`)
 2. Add any new data extraction to `02_Pipeline/extract_dart.py` or a new `extract_*.py` file
 3. Add transform logic to `02_Pipeline/transform.py` if new Parquet tables are needed
 4. Write analysis output to `03_Analysis/` as CSV + Parquet (same pattern as `beneish_screen.py`)
@@ -27,9 +27,11 @@ All new features require tests. Run the test suite with:
 pytest tests/ -v
 ```
 
-Two test files:
+Four test files:
 - `tests/test_pipeline_invariants.py` — self-contained schema/logic tests, no live data needed
 - `tests/test_acceptance_criteria.py` — end-to-end checks, run after a full pipeline run
+- `tests/test_e2e_synthetic.py` — end-to-end tests with synthetic data
+- `tests/test_cli.py` — CLI smoke tests
 
 Add invariant tests for any new Parquet schema columns. Add acceptance-criteria tests for any new acceptance criteria defined in the MVP requirements doc (local: `00_Reference/17_MVP_Requirements.md`).
 

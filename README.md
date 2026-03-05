@@ -147,6 +147,7 @@ kr-forensic-finance/
 │   ├── extract_bondholder_register.py  DART sub_docs → 사채권자명부 HTML parse
 │   ├── extract_revenue_schedule.py     DART sub_docs → 매출명세서 HTML parse
 │   ├── extract_seibro_repricing.py SEIBRO CB/BW repricing via data.go.kr API
+│   ├── _pipeline_helpers.py       Shared utilities (API key, corp_code normalization, HTML parsers)
 │   ├── extract_krx.py             KRX short selling balances
 │   ├── extract_kftc.py            KFTC cross-shareholding
 │   └── transform.py               raw → company_financials.parquet
@@ -155,9 +156,13 @@ kr-forensic-finance/
 │   ├── beneish_viz.py             Visual summary → beneish_viz.html
 │   ├── beneish_viz.html           Generated output — open in any browser
 │   ├── phase1_research_questions.py  Open analytical threads from Phase 1
-│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (stub)
-│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (stub)
-│   └── officer_network.py         Milestone 4 — Officer graph (stub)
+│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (Marimo; use run_cb_bw_timelines.py)
+│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (Marimo; use run_timing_anomalies.py)
+│   ├── officer_network.py         Milestone 4 — Officer graph (Marimo; use run_officer_network.py)
+│   ├── run_cb_bw_timelines.py     Standalone runner → cb_bw_summary.csv
+│   ├── run_timing_anomalies.py    Standalone runner → timing_anomalies.csv
+│   ├── run_officer_network.py     Standalone runner → centrality_report.csv
+│   └── company_dives/             Per-company forensic deep dive scripts
 ├── src/
 │   ├── __init__.py                Package init
 │   ├── pipeline.py                Pipeline wrapper for CLI/API callers

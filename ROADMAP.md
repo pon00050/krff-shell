@@ -16,15 +16,16 @@
 | `cb_bw_events.parquet` | 3,672 | CB/BW issuance events from DART DS005 |
 | `price_volume.parquet` | 245,354 | OHLCV ±60 day windows around events |
 | `corp_ticker_map.parquet` | 1,702 | corp_code ↔ ticker mapping |
-| `officer_holdings.parquet` | 6,958 | Officer holding changes |
-| `disclosures.parquet` | — | DART filing listings (run `extract_disclosures.py`) |
+| `officer_holdings.parquet` | 6,957 | Officer holding changes |
+| `disclosures.parquet` | 734 | DART filing listings |
+| `major_holders.parquet` | — | 5%+ ownership threshold filings |
+| `bondholder_register.parquet` | — | CB bondholder names from 사채권자명부 |
+| `revenue_schedule.parquet` | — | Revenue by customer/segment from 매출명세서 |
 
 ## What's Next
 
-1. **Run all four analysis milestones** — all are implemented and data exists (including `disclosures.parquet` via `extract_disclosures.py`)
-2. **SEIBRO repricing data** — enriches CB/BW timelines (not a blocker for initial analysis):
-   - Call 1577-6600 for official API
-   - Playwright scraper if no API exists
+1. **SEIBRO repricing data** — `extract_seibro_repricing.py` built; data.go.kr API key applied for; once key arrives, run extractor → re-score CB/BW timelines and officer network
+2. **Populate paid-tier tables** — run `extract_major_holders.py`, `extract_bondholder_register.py`, `extract_revenue_schedule.py` at scale for Tier 1 leads
 
 ## Open Backlog
 

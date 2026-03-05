@@ -57,3 +57,6 @@ docs_cache/
 # Session handoff notes — internal only
 NEXT_SESSION_GITHUB_RELEASE.md
 BUGS.md
+
+# PyVis/Marimo JS vendor artifacts
+lib/
