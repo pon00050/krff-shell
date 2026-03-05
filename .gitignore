@@ -62,6 +62,7 @@ BUGS.md
 # Removed from git history via git-filter-repo (2026-03-05)
 KNOWN_ISSUES.md
 CHANGELOG.md
+PRODUCT_VISION.md
 03_Analysis/company_dives/
 
 # PyVis/Marimo JS vendor artifacts
