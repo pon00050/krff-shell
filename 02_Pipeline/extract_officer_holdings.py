@@ -6,7 +6,7 @@ report (임원ᆞ주요주주특정증권등소유상황보고서) via the DART 
 
 Output:
   01_Data/processed/officer_holdings.parquet
-  Columns: corp_code, date, officer_name, change_shares
+  Columns: corp_code, date, officer_name, change_shares, pct, title
 
 Usage:
   python 02_Pipeline/extract_officer_holdings.py
@@ -81,22 +81,26 @@ def _fetch_elestock(corp_code: str, api_key: str) -> list[dict]:
         if len(report_date) == 8 and report_date.isdigit():
             report_date = f"{report_date[:4]}-{report_date[4:6]}-{report_date[6:]}"
 
-        officer_name = (
-            item.get("nm")
-            or item.get("reprt_nm")
-            or ""
-        )
-        raw_chg = item.get("chng_rm_stck_cnt") or item.get("chg_stk_qnt") or "0"
+        officer_name = item.get("repror") or ""
+        raw_chg = item.get("sp_stock_lmp_irds_cnt") or "0"
         try:
             change_shares = float(str(raw_chg).replace(",", ""))
         except (ValueError, TypeError):
             change_shares = None
+
+        raw_pct = item.get("sp_stock_lmp_rate")
+        try:
+            pct = float(str(raw_pct).replace(",", "")) if raw_pct else None
+        except (ValueError, TypeError):
+            pct = None
 
         rows.append({
             "corp_code": corp_code,
             "date": report_date,
             "officer_name": officer_name,
             "change_shares": change_shares,
+            "pct": pct,
+            "title": item.get("isu_exctv_ofcps") or "",
         })
     return rows
 
@@ -150,7 +154,7 @@ def fetch_officer_holdings(
         time.sleep(sleep)
 
     if not all_rows:
-        df_out = pd.DataFrame(columns=["corp_code", "date", "officer_name", "change_shares"])
+        df_out = pd.DataFrame(columns=["corp_code", "date", "officer_name", "change_shares", "pct", "title"])
     else:
         df_out = pd.DataFrame(all_rows)
 
