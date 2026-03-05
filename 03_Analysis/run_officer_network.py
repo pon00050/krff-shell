@@ -73,19 +73,25 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set, dict, di
     if beneish_path.exists():
         df_b = pd.read_csv(beneish_path)
         if "flag" in df_b.columns and "corp_code" in df_b.columns:
-            flagged_companies.update(df_b[df_b["flag"] == True]["corp_code"].tolist())
+            flagged_companies.update(
+                df_b[df_b["flag"] == True]["corp_code"].astype(str).str.zfill(8).tolist()
+            )
 
     cb_path = ANALYSIS / "cb_bw_summary.csv"
     if cb_path.exists():
         df_cb = pd.read_csv(cb_path)
         if "anomaly_score" in df_cb.columns and "corp_code" in df_cb.columns:
-            flagged_companies.update(df_cb[df_cb["anomaly_score"] >= FLAG_THRESHOLD]["corp_code"].tolist())
+            flagged_companies.update(
+                df_cb[df_cb["anomaly_score"] >= FLAG_THRESHOLD]["corp_code"].astype(str).str.zfill(8).tolist()
+            )
 
     timing_path = ANALYSIS / "timing_anomalies.csv"
     if timing_path.exists():
         df_ta = pd.read_csv(timing_path)
         if "flag" in df_ta.columns and "corp_code" in df_ta.columns:
-            flagged_companies.update(df_ta[df_ta["flag"] == True]["corp_code"].tolist())
+            flagged_companies.update(
+                df_ta[df_ta["flag"] == True]["corp_code"].astype(str).str.zfill(8).tolist()
+            )
 
     print(
         f"Loaded {df_oh['corp_code'].nunique():,} companies, "
