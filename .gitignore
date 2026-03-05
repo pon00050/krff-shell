@@ -45,6 +45,7 @@ Thumbs.db
 docs_cache/
 
 # Private — local only
+PIPELINE_MAP.md
 00_Reference/
 KNOWN_ISSUES.md
 CHANGELOG.md
