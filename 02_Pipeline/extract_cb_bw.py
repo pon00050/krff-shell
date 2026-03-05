@@ -23,7 +23,6 @@ import argparse
 import datetime
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -31,6 +30,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from _pipeline_helpers import _dart_api_key, _norm_corp_code
 
 load_dotenv()
 
@@ -53,15 +54,6 @@ DART_BW_URL = "https://opendart.fss.or.kr/api/bdwtIsDecsn.json"
 SLEEP_DEFAULT = 0.5
 
 
-def _norm_corp_code(code) -> str:
-    return str(code).zfill(8)
-
-
-def _dart_api_key() -> str:
-    key = os.getenv("DART_API_KEY", "")
-    if not key or key == "your_opendart_api_key_here":
-        raise EnvironmentError("DART_API_KEY not set.")
-    return key
 
 
 def _parse_dart_response(

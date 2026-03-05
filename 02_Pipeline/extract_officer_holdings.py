@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -26,6 +25,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from _pipeline_helpers import _dart_api_key
 
 load_dotenv()
 
@@ -44,12 +45,6 @@ PROCESSED = ROOT / "01_Data" / "processed"
 DART_ELESTOCK_URL = "https://opendart.fss.or.kr/api/elestock.json"
 SLEEP_DEFAULT = 0.5
 
-
-def _dart_api_key() -> str:
-    key = os.getenv("DART_API_KEY", "")
-    if not key or key == "your_opendart_api_key_here":
-        raise EnvironmentError("DART_API_KEY not set.")
-    return key
 
 
 def _fetch_elestock(corp_code: str, api_key: str) -> list[dict]:

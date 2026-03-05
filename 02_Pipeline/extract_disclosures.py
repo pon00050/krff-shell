@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -33,6 +32,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from _pipeline_helpers import _dart_api_key
 
 load_dotenv()
 
@@ -54,12 +55,6 @@ SLEEP_DEFAULT = 0.5
 PAGE_COUNT = 100
 DISCLOSURE_COLS = ["corp_code", "rcept_no", "filed_at", "title", "type", "dart_link"]
 
-
-def _dart_api_key() -> str:
-    key = os.getenv("DART_API_KEY", "")
-    if not key or key == "your_opendart_api_key_here":
-        raise EnvironmentError("DART_API_KEY not set.")
-    return key
 
 
 def _fetch_with_backoff(
