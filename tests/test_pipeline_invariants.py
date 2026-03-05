@@ -1859,3 +1859,205 @@ class TestRevenueParseLogic:
         assert year_map.get(2023) == "당기(2023)"
         assert year_map.get(2022) == "전기(2022)"
         assert year_map.get(2021) == "전전기(2021)"
+
+
+# ─── Category 19: Report module ───────────────────────────────────────────────
+
+class TestReportModule:
+    """
+    Unit tests for src/report.py — report generator module.
+    All tests use monkeypatched loaders so no real parquets are needed.
+    TDD: these tests are written before src/report.py exists (ImportError is expected until
+    the module is created).
+    """
+
+    @pytest.fixture
+    def synthetic_beneish(self):
+        return pd.DataFrame({
+            "corp_code": ["01051092"] * 3,
+            "ticker": ["241820"] * 3,
+            "company_name": ["피씨엘"] * 3,
+            "year": [2021, 2022, 2023],
+            "m_score": [-1.5, -2.1, -0.8],
+            "risk_tier": ["High", "High", "Low"],
+            "flag": [True, True, False],
+            "sector_percentile": [75.0, 80.0, 30.0],
+            "dsri": [1.2, 1.4, 1.0],
+            "gmi": [0.9, 0.85, 1.0],
+            "aqi": [1.1, 1.2, 1.0],
+            "sgi": [1.3, 1.1, 1.0],
+            "depi": [0.95, 1.0, 1.0],
+            "sgai": [1.1, 0.9, 1.0],
+            "lvgi": [1.2, 1.1, 1.0],
+            "tata": [0.02, 0.01, 0.0],
+        })
+
+    @pytest.fixture
+    def synthetic_cb_bw(self):
+        return pd.DataFrame({
+            "corp_code": ["01051092"] * 2,
+            "issue_date": ["2021-03-15", "2022-06-01"],
+            "bond_type": ["CB", "BW"],
+            "exercise_price": [5000, 3000],
+            "flag_count": [2, 1],
+            "flags": ["DSRI_HIGH|SGI_HIGH", "GMI_HIGH"],
+            "peak_date": ["2021-03-01", None],
+            "volume_ratio": [3.5, 1.2],
+        })
+
+    @pytest.fixture
+    def synthetic_timing(self):
+        return pd.DataFrame({
+            "corp_code": ["01051092"],
+            "filing_date": ["2022-06-15"],
+            "title": ["Test disclosure"],
+            "price_change_pct": [8.5],
+            "volume_ratio": [3.2],
+            "flag": [True],
+        })
+
+    def _patch_loaders(self, monkeypatch, beneish_df, cb_bw_df, timing_df):
+        """Monkeypatch all loaders and CSV path constants in src.report."""
+        import src.report as rpt
+
+        def _filter(df, cc):
+            if df.empty:
+                return pd.DataFrame()
+            if "corp_code" not in df.columns:
+                return df.copy()
+            return df[df["corp_code"].astype(str) == cc].copy()
+
+        monkeypatch.setattr(rpt, "_load_beneish", lambda cc: _filter(beneish_df, cc))
+        monkeypatch.setattr(rpt, "_load_company_name", lambda cc: "피씨엘" if cc == "01051092" else cc)
+        monkeypatch.setattr(rpt, "_load_cb_bw", lambda cc: _filter(cb_bw_df, cc))
+        monkeypatch.setattr(rpt, "_load_timing_anomalies", lambda cc: _filter(timing_df, cc))
+        monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_officer_holdings", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_financials", lambda cc: pd.DataFrame())
+        _nonexistent = pathlib.Path("/nonexistent/fake.csv")
+        monkeypatch.setattr(rpt, "_CB_BW_CSV", _nonexistent)
+        monkeypatch.setattr(rpt, "_TIMING_CSV", _nonexistent)
+        monkeypatch.setattr(rpt, "_NETWORK_CSV", _nonexistent)
+
+    def test_generate_report_returns_path(
+        self, tmp_path, monkeypatch, synthetic_beneish, synthetic_cb_bw, synthetic_timing
+    ):
+        """generate_report returns a Path that exists, is >5KB, is valid HTML."""
+        import src.report as rpt
+        self._patch_loaders(monkeypatch, synthetic_beneish, synthetic_cb_bw, synthetic_timing)
+        out = tmp_path / "01051092_report.html"
+        result = rpt.generate_report("01051092", output_path=out, skip_claude=True)
+        assert isinstance(result, pathlib.Path)
+        assert result.exists()
+        assert result.stat().st_size > 5000, f"Report only {result.stat().st_size} bytes"
+        content = result.read_text(encoding="utf-8")
+        assert "<!DOCTYPE html>" in content
+        assert "피씨엘" in content
+
+    def test_report_html_contains_all_sections(
+        self, tmp_path, monkeypatch, synthetic_beneish, synthetic_cb_bw, synthetic_timing
+    ):
+        """HTML report contains all 5 major section headings."""
+        import src.report as rpt
+        self._patch_loaders(monkeypatch, synthetic_beneish, synthetic_cb_bw, synthetic_timing)
+        out = tmp_path / "sections_report.html"
+        rpt.generate_report("01051092", output_path=out, skip_claude=True)
+        content = out.read_text(encoding="utf-8")
+        for phrase in ("M-Score", "CB/BW", "Timing", "Officer", "Synthesis"):
+            assert phrase in content, f"Expected '{phrase}' in report HTML"
+
+    def test_report_empty_sections_show_note(self, tmp_path, monkeypatch):
+        """With all-empty data, report generates without raising and contains note text."""
+        import src.report as rpt
+        self._patch_loaders(monkeypatch, pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+        out = tmp_path / "empty_report.html"
+        rpt.generate_report("01051092", output_path=out, skip_claude=True)
+        content = out.read_text(encoding="utf-8")
+        assert (
+            "No " in content
+            or "not found" in content.lower()
+            or "no data" in content.lower()
+        ), "Expected an absence note in empty report"
+
+    def test_corp_code_zero_padded(self, tmp_path, monkeypatch):
+        """Passing '1051092' (7 digits) causes loaders to be called with '01051092'."""
+        import src.report as rpt
+        called_with: list[str] = []
+
+        def fake_load_beneish(cc: str) -> pd.DataFrame:
+            called_with.append(cc)
+            return pd.DataFrame()
+
+        monkeypatch.setattr(rpt, "_load_beneish", fake_load_beneish)
+        monkeypatch.setattr(rpt, "_load_company_name", lambda cc: cc)
+        monkeypatch.setattr(rpt, "_load_cb_bw", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_timing_anomalies", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_officer_holdings", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_financials", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_CB_BW_CSV", pathlib.Path("/nonexistent/cb_bw.csv"))
+        monkeypatch.setattr(rpt, "_TIMING_CSV", pathlib.Path("/nonexistent/timing.csv"))
+        monkeypatch.setattr(rpt, "_NETWORK_CSV", pathlib.Path("/nonexistent/network.csv"))
+        out = tmp_path / "padded_report.html"
+        rpt.generate_report("1051092", output_path=out, skip_claude=True)
+        assert called_with, "Expected _load_beneish to be called"
+        assert called_with[0] == "01051092", f"Expected '01051092', got '{called_with[0]}'"
+
+    def test_mscore_trend_chart_returns_figure(self, synthetic_beneish):
+        """chart_mscore_trend returns a go.Figure."""
+        import plotly.graph_objects as go
+        from src.report import chart_mscore_trend
+        fig = chart_mscore_trend(synthetic_beneish)
+        assert isinstance(fig, go.Figure)
+
+    def test_component_bar_chart_returns_figure(self, synthetic_beneish):
+        """chart_component_bar returns a go.Figure."""
+        import plotly.graph_objects as go
+        from src.report import chart_component_bar
+        fig = chart_component_bar(synthetic_beneish)
+        assert isinstance(fig, go.Figure)
+
+    def test_chart_functions_handle_empty_input(self):
+        """All 4 chart functions handle pd.DataFrame() without raising."""
+        import plotly.graph_objects as go
+        from src.report import (
+            chart_cb_bw_timeline,
+            chart_component_bar,
+            chart_mscore_trend,
+            chart_timing_anomalies,
+        )
+        for fn in (chart_mscore_trend, chart_component_bar, chart_cb_bw_timeline, chart_timing_anomalies):
+            fig = fn(pd.DataFrame())
+            assert isinstance(fig, go.Figure), f"{fn.__name__} did not return go.Figure on empty input"
+
+    def test_synthesize_with_claude_no_key(self, monkeypatch):
+        """synthesize_with_claude returns [] when ANTHROPIC_API_KEY not in env."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        from src.report import synthesize_with_claude
+        result = synthesize_with_claude({"corp_code": "01051092", "company_name": "test"})
+        assert result == []
+
+    def test_synthesize_with_claude_mock(self, monkeypatch):
+        """Returns validated flag list when mocked API returns valid JSON."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-for-test")
+
+        class _FakeBlock:
+            text = '[{"source_quote": "Revenue dropped 80%", "flag_type": "SGI_HIGH", "severity": "high"}]'
+
+        class _FakeMessage:
+            content = [_FakeBlock()]
+
+        class _FakeMessages:
+            def create(self, **kwargs):
+                return _FakeMessage()
+
+        class _FakeClient:
+            messages = _FakeMessages()
+
+        import src.report as rpt
+        monkeypatch.setattr(rpt, "_make_anthropic_client", lambda: _FakeClient())
+        result = rpt.synthesize_with_claude({"corp_code": "01051092", "company_name": "test"})
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["severity"] == "high"
+        assert result[0]["flag_type"] == "SGI_HIGH"
