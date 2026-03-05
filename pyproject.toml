@@ -33,6 +33,7 @@ dependencies = [
     "boto3>=1.34.0",
     "duckdb>=1.0.0",
     "setuptools<82",        # pykrx requires pkg_resources; setuptools>=82 removed it
+    "lxml",                 # pd.read_html() backend for bondholder + revenue HTML parsing
 
     # Phase 2 additions (uncomment when starting Phase 2):
     # "dart-fss",             # DS005 CB/BW structured endpoint helpers

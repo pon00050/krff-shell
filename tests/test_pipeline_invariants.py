@@ -1465,3 +1465,397 @@ class TestOfficerFlagThreshold:
         raise AssertionError(
             "FLAG_THRESHOLD constant not found in run_officer_network.py"
         )
+
+
+# ─── Category 16: major_holders schema + API handling ────────────────────────
+
+class TestMajorHoldersSchema:
+    """
+    Schema contract for major_holders.parquet.
+    Skips when file is absent (not yet generated).
+    """
+
+    @pytest.fixture(scope="class")
+    def major_holders(self):
+        p = PROCESSED / "major_holders.parquet"
+        if not p.exists():
+            pytest.skip("major_holders.parquet not found — run extract_major_holders.py first")
+        return pd.read_parquet(p)
+
+    def test_required_columns(self, major_holders):
+        required = [
+            "corp_code", "rcept_no", "rcept_dt", "corp_name", "report_tp", "repror",
+            "stkqy", "stkqy_irds", "stkrt", "stkrt_irds", "ctr_stkqy", "ctr_stkrt",
+            "report_resn",
+        ]
+        missing = [c for c in required if c not in major_holders.columns]
+        assert not missing, f"major_holders.parquet missing columns: {missing}"
+
+    def test_corp_code_non_null_and_eight_chars(self, major_holders):
+        null_count = major_holders["corp_code"].isna().sum()
+        assert null_count == 0, f"{null_count} null corp_code values"
+        bad = major_holders["corp_code"].str.len().ne(8).sum()
+        assert bad == 0, f"{bad} corp_code values not 8 characters"
+
+    def test_rcept_dt_format(self, major_holders):
+        non_empty = major_holders["rcept_dt"].dropna()
+        non_empty = non_empty[non_empty != ""]
+        bad = non_empty[~non_empty.str.match(r"^\d{4}-\d{2}-\d{2}$")]
+        assert len(bad) == 0, f"{len(bad)} rcept_dt values not in YYYY-MM-DD format: {bad.head().tolist()}"
+
+    def test_no_duplicate_corp_code_rcept_no(self, major_holders):
+        dup = major_holders.duplicated(subset=["corp_code", "rcept_no"]).sum()
+        assert dup == 0, f"{dup} duplicate (corp_code, rcept_no) pairs in major_holders"
+
+    def test_stkrt_in_valid_range(self, major_holders):
+        non_null = major_holders["stkrt"].dropna()
+        if len(non_null) == 0:
+            return
+        out_of_range = non_null[(non_null < 0) | (non_null > 100)]
+        assert len(out_of_range) == 0, (
+            f"{len(out_of_range)} stkrt values outside 0–100 range: {out_of_range.head().tolist()}"
+        )
+
+
+class TestMajorHoldersApiHandling:
+    """
+    Unit tests for _fetch_majorstock() API edge cases.
+    Uses monkeypatched requests — no network calls.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _add_pipeline_to_path(self):
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+
+    def test_status_013_returns_empty_and_caches(self, tmp_path, monkeypatch):
+        """Status 013 (no filings) → empty list returned + empty cache written."""
+        import extract_major_holders as emh
+
+        def mock_get(*args, **kwargs):
+            class FakeResp:
+                def json(self):
+                    return {"status": "013", "message": "조회된 데이터가 없습니다."}
+            return FakeResp()
+
+        monkeypatch.setattr(emh.requests, "get", mock_get)
+        raw_dir = tmp_path / "major_holders"
+        result = emh._fetch_majorstock("00000001", "fake_key", raw_dir, force=False)
+
+        assert result == []
+        cache_path = raw_dir / "00000001.json"
+        assert cache_path.exists(), "Cache file should be written for status 013"
+        with open(cache_path) as f:
+            import json as _json
+            cached = _json.load(f)
+        assert cached == []
+
+    def test_cache_hit_skips_http_calls(self, tmp_path, monkeypatch):
+        """When cache file exists and force=False, no HTTP call is made."""
+        import extract_major_holders as emh
+        import json as _json
+
+        raw_dir = tmp_path / "major_holders"
+        raw_dir.mkdir(parents=True)
+        cached_rows = [{"corp_code": "00000002", "rcept_no": "20230001"}]
+        cache_path = raw_dir / "00000002.json"
+        with open(cache_path, "w") as f:
+            _json.dump(cached_rows, f)
+
+        call_count = {"n": 0}
+
+        def mock_get(*args, **kwargs):
+            call_count["n"] += 1
+            raise AssertionError("HTTP call should not be made when cache exists")
+
+        monkeypatch.setattr(emh.requests, "get", mock_get)
+        result = emh._fetch_majorstock("00000002", "fake_key", raw_dir, force=False)
+
+        assert result == cached_rows
+        assert call_count["n"] == 0
+
+    def test_status_020_not_cached(self, tmp_path, monkeypatch):
+        """Status 020 (rate limit) → returns [] and does NOT write cache."""
+        import extract_major_holders as emh
+
+        def mock_get(*args, **kwargs):
+            class FakeResp:
+                def json(self):
+                    return {"status": "020", "message": "요청 제한"}
+            return FakeResp()
+
+        monkeypatch.setattr(emh.requests, "get", mock_get)
+        raw_dir = tmp_path / "major_holders"
+        result = emh._fetch_majorstock("00000003", "fake_key", raw_dir, force=False)
+
+        assert result == []
+        cache_path = raw_dir / "00000003.json"
+        assert not cache_path.exists(), "Cache must NOT be written for status 020"
+
+
+# ─── Category 17: bondholder register schema + parse logic ───────────────────
+
+class TestBondholderRegisterSchema:
+    """
+    Schema contract for bondholder_register.parquet.
+    Skips when file is absent (not yet generated).
+    """
+
+    @pytest.fixture(scope="class")
+    def bondholder_register(self):
+        p = PROCESSED / "bondholder_register.parquet"
+        if not p.exists():
+            pytest.skip(
+                "bondholder_register.parquet not found — "
+                "run extract_bondholder_register.py first"
+            )
+        return pd.read_parquet(p)
+
+    def test_required_columns(self, bondholder_register):
+        required = [
+            "corp_code", "rcept_no", "rcept_dt", "holder_name", "address",
+            "face_value_krw", "note", "parse_status",
+        ]
+        missing = [c for c in required if c not in bondholder_register.columns]
+        assert not missing, f"bondholder_register.parquet missing columns: {missing}"
+
+    def test_parse_status_values_valid(self, bondholder_register):
+        valid = {"success", "no_subdoc", "parse_error", "no_filing", "fetch_error"}
+        bad = set(bondholder_register["parse_status"].unique()) - valid
+        assert not bad, f"Unexpected parse_status values: {bad}"
+
+    def test_success_rows_have_holder_name(self, bondholder_register):
+        success = bondholder_register[bondholder_register["parse_status"] == "success"]
+        if len(success) == 0:
+            return
+        empty_name = success["holder_name"].isna() | (success["holder_name"] == "")
+        n_empty = empty_name.sum()
+        assert n_empty == 0, f"{n_empty} success rows have empty holder_name"
+
+    def test_no_duplicate_corp_rcept_holder(self, bondholder_register):
+        dup = bondholder_register.duplicated(
+            subset=["corp_code", "rcept_no", "holder_name"]
+        ).sum()
+        assert dup == 0, f"{dup} duplicate (corp_code, rcept_no, holder_name) rows"
+
+    def test_success_face_value_mostly_populated(self, bondholder_register):
+        """At most 20% of success rows may have null face_value_krw (tables without amounts)."""
+        success = bondholder_register[bondholder_register["parse_status"] == "success"]
+        if len(success) == 0:
+            return
+        null_pct = success["face_value_krw"].isna().sum() / len(success)
+        assert null_pct <= 0.20, (
+            f"{null_pct:.1%} of success rows have null face_value_krw (threshold: 20%). "
+            "Check _BONDHOLDER_COL_ALIASES for missing column name variants."
+        )
+
+
+class TestBondholderParseLogic:
+    """Unit tests for bondholder HTML parsing — no network calls."""
+
+    @pytest.fixture(autouse=True)
+    def _add_pipeline_to_path(self):
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+
+    def _make_html_table(self, headers: list[str], rows: list[list]) -> str:
+        header_cells = "".join(f"<th>{h}</th>" for h in headers)
+        data_rows = ""
+        for row in rows:
+            cells = "".join(f"<td>{v}</td>" for v in row)
+            data_rows += f"<tr>{cells}</tr>"
+        return f"<html><body><table><tr>{header_cells}</tr>{data_rows}</table></body></html>"
+
+    def test_standard_columns_parsed_correctly(self):
+        from extract_bondholder_register import _parse_bondholder_table
+        html = self._make_html_table(
+            ["성명/법인명", "주소", "사채권면액", "비고"],
+            [["홍길동", "서울시 강남구", "100,000,000", "특이사항없음"]],
+        )
+        result = _parse_bondholder_table(html)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["holder_name"] == "홍길동"
+        assert result[0]["address"] == "서울시 강남구"
+        assert result[0]["face_value_krw"] == 100_000_000
+        assert result[0]["note"] == "특이사항없음"
+
+    def test_alternate_column_name_resolved(self):
+        from extract_bondholder_register import _parse_bondholder_table
+        # "사채권자명" should map to holder_name
+        html = self._make_html_table(
+            ["사채권자명", "사채권면액"],
+            [["(주)테스트", "50,000,000"]],
+        )
+        result = _parse_bondholder_table(html)
+        assert result is not None
+        assert result[0]["holder_name"] == "(주)테스트"
+
+    def test_empty_html_returns_none(self):
+        from extract_bondholder_register import _parse_bondholder_table
+        result = _parse_bondholder_table("<html><body></body></html>")
+        assert result is None
+
+    def test_parse_krw_parenthetical_negative(self):
+        from extract_bondholder_register import _parse_krw
+        assert _parse_krw("(50,000,000)") == -50_000_000
+
+    def test_parse_krw_comma_formatting(self):
+        from extract_bondholder_register import _parse_krw
+        assert _parse_krw("1,234,567") == 1_234_567
+
+    def test_parse_krw_cheonwon_multiplier(self):
+        from extract_bondholder_register import _parse_krw
+        assert _parse_krw("100,000", unit_multiplier=1000) == 100_000_000
+
+    def test_parse_krw_empty_string_returns_none(self):
+        from extract_bondholder_register import _parse_krw
+        assert _parse_krw("") is None
+        assert _parse_krw(None) is None
+
+    def test_detect_unit_multiplier_cheonwon(self):
+        from extract_bondholder_register import _detect_unit_multiplier
+        html_cheonwon = "<html>(단위: 천원)</html>"
+        assert _detect_unit_multiplier(html_cheonwon) == 1000
+
+    def test_detect_unit_multiplier_no_unit(self):
+        from extract_bondholder_register import _detect_unit_multiplier
+        html_plain = "<html><body>일반 표</body></html>"
+        assert _detect_unit_multiplier(html_plain) == 1
+
+
+# ─── Category 18: revenue schedule schema + parse logic ──────────────────────
+
+class TestRevenueScheduleSchema:
+    """
+    Schema contract for revenue_schedule.parquet.
+    Skips when file is absent (not yet generated).
+    """
+
+    @pytest.fixture(scope="class")
+    def revenue_schedule(self):
+        p = PROCESSED / "revenue_schedule.parquet"
+        if not p.exists():
+            pytest.skip(
+                "revenue_schedule.parquet not found — "
+                "run extract_revenue_schedule.py first"
+            )
+        return pd.read_parquet(p)
+
+    def test_required_columns(self, revenue_schedule):
+        required = [
+            "corp_code", "rcept_no", "report_year", "row_label",
+            "revenue_krw", "revenue_year", "parse_status",
+        ]
+        missing = [c for c in required if c not in revenue_schedule.columns]
+        assert not missing, f"revenue_schedule.parquet missing columns: {missing}"
+
+    def test_year_columns_are_integer_dtype(self, revenue_schedule):
+        for col in ("report_year", "revenue_year"):
+            assert pd.api.types.is_integer_dtype(revenue_schedule[col]), (
+                f"{col} must be integer dtype, got {revenue_schedule[col].dtype}"
+            )
+
+    def test_revenue_year_in_valid_range(self, revenue_schedule):
+        non_null = revenue_schedule["revenue_year"].dropna()
+        out_of_range = non_null[(non_null < 2010) | (non_null > 2030)]
+        assert len(out_of_range) == 0, (
+            f"{len(out_of_range)} revenue_year values outside 2010–2030: "
+            f"{out_of_range.head().tolist()}"
+        )
+
+    def test_success_rows_have_row_label(self, revenue_schedule):
+        success = revenue_schedule[revenue_schedule["parse_status"] == "success"]
+        if len(success) == 0:
+            return
+        empty = success["row_label"].isna() | (success["row_label"] == "")
+        assert empty.sum() == 0, f"{empty.sum()} success rows have empty row_label"
+
+    def test_no_duplicate_dedup_key(self, revenue_schedule):
+        dup = revenue_schedule.duplicated(
+            subset=["corp_code", "rcept_no", "row_label", "revenue_year"]
+        ).sum()
+        assert dup == 0, (
+            f"{dup} duplicate (corp_code, rcept_no, row_label, revenue_year) rows"
+        )
+
+
+class TestRevenueParseLogic:
+    """Unit tests for revenue schedule HTML parsing — no network calls."""
+
+    @pytest.fixture(autouse=True)
+    def _add_pipeline_to_path(self):
+        pipeline_dir = str(ROOT / "02_Pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+
+    def _make_html_table(self, headers: list[str], rows: list[list]) -> str:
+        header_cells = "".join(f"<th>{h}</th>" for h in headers)
+        data_rows = ""
+        for row in rows:
+            cells = "".join(f"<td>{v}</td>" for v in row)
+            data_rows += f"<tr>{cells}</tr>"
+        return f"<html><body><table><tr>{header_cells}</tr>{data_rows}</table></body></html>"
+
+    def test_explicit_year_columns_produce_two_rows(self):
+        """Columns with explicit years produce one row per year."""
+        from extract_revenue_schedule import _parse_revenue_table
+        html = self._make_html_table(
+            ["구분", "당기(2023)", "전기(2022)"],
+            [["고객A", "500,000,000", "400,000,000"]],
+        )
+        result = _parse_revenue_table(html, report_year=2023)
+        assert result is not None
+        years_found = {r["revenue_year"] for r in result}
+        assert 2023 in years_found, f"Expected year 2023 in {years_found}"
+        assert 2022 in years_found, f"Expected year 2022 in {years_found}"
+
+    def test_implicit_period_names_map_correctly(self):
+        """당기/전기 without explicit year maps to report_year / report_year-1."""
+        from extract_revenue_schedule import _parse_revenue_table
+        html = self._make_html_table(
+            ["구분", "당기", "전기"],
+            [["제품A", "300,000,000", "200,000,000"]],
+        )
+        result = _parse_revenue_table(html, report_year=2022)
+        assert result is not None
+        years_found = {r["revenue_year"] for r in result}
+        assert 2022 in years_found, f"Expected 2022 in {years_found}"
+        assert 2021 in years_found, f"Expected 2021 in {years_found}"
+
+    def test_cheonwon_unit_multiplied(self):
+        """(단위: 천원) in page → amounts multiplied by 1000."""
+        from extract_revenue_schedule import _parse_revenue_table
+        html = (
+            "<html><body>(단위: 천원)<table>"
+            "<tr><th>구분</th><th>당기(2023)</th></tr>"
+            "<tr><td>제품B</td><td>100,000</td></tr>"
+            "</table></body></html>"
+        )
+        result = _parse_revenue_table(html, report_year=2023)
+        assert result is not None
+        assert result[0]["revenue_krw"] == 100_000_000
+
+    def test_skip_labels_excluded(self):
+        """Rows with skip labels (합계, 계, 구분) are not included in output."""
+        from extract_revenue_schedule import _parse_revenue_table
+        html = self._make_html_table(
+            ["구분", "당기(2023)"],
+            [["합계", "999,999,999"], ["고객A", "100,000,000"]],
+        )
+        result = _parse_revenue_table(html, report_year=2023)
+        assert result is not None
+        labels = [r["row_label"] for r in result]
+        assert "합계" not in labels, "합계 should be excluded as a skip label"
+        assert "고객A" in labels
+
+    def test_extract_year_columns_explicit(self):
+        """_extract_year_columns correctly maps explicit year columns."""
+        from extract_revenue_schedule import _extract_year_columns
+        df = pd.DataFrame(columns=["구분", "당기(2023)", "전기(2022)", "전전기(2021)"])
+        year_map = _extract_year_columns(df, report_year=2023)
+        assert year_map.get(2023) == "당기(2023)"
+        assert year_map.get(2022) == "전기(2022)"
+        assert year_map.get(2021) == "전전기(2021)"

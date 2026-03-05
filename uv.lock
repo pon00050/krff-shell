@@ -814,6 +814,7 @@ source = { editable = "." }
 dependencies = [
     { name = "boto3" },
     { name = "duckdb" },
+    { name = "lxml" },
     { name = "marimo" },
     { name = "opendartreader" },
     { name = "pandas" },
@@ -837,6 +838,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.0" },
     { name = "duckdb", specifier = ">=1.0.0" },
+    { name = "lxml" },
     { name = "marimo" },
     { name = "opendartreader" },
     { name = "pandas" },

@@ -223,6 +223,11 @@ def run_stage_cb_bw(
     log.info("=== Stage: cb_bw (officer holdings) ===")
     eoh.fetch_officer_holdings(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
 
+    import extract_major_holders as emh
+
+    log.info("=== Stage: cb_bw (major holders / 대량보유보고) ===")
+    emh.fetch_major_holders(force=force, sample=sample, sleep=_sleep, max_minutes=max_minutes)
+
     import extract_disclosures as edisc
 
     log.info("=== Stage: cb_bw (disclosures) ===")
