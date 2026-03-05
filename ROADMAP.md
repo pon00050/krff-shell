@@ -21,6 +21,7 @@
 | `major_holders.parquet` | 5%+ ownership threshold filings |
 | `bondholder_register.parquet` | CB bondholder names from 사채권자명부 |
 | `revenue_schedule.parquet` | Revenue by customer/segment from 매출명세서 |
+| `bond_isin_map.parquet` | KRX bond ISINs per corp_code; required by SEIBRO StockSvc extractor |
 
 ## What's Next
 
@@ -54,11 +55,19 @@
 
 *(none — all non-blocked items complete)*
 
+### Completed (Session 26)
+
+| ID | Description | Outcome |
+|---|---|---|
+| S12 | Fix `extract_seibro_repricing.py` (4 endpoint/param bugs + ISIN join key); write `build_isin_map.py` | **extractor now uses StockSvc/getXrcStkOptionXrcInfoN1 + getXrcStkStatInfoN1 with bondIsin param; `build_isin_map.py` extracts ISINs from DART CB filings via regex** |
+| S12b | Probe `extract_seibro.py` websquare endpoints | All 4 return HTML shell (545 chars, JS redirect) — WebSquare requires browser session; **superseded by data.go.kr REST API** |
+
 ### Blocked (external dependencies)
 
 | ID | Description | Blocked by |
 |---|---|---|
-| S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation |
+| S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation (resultCode=99 as of 2026-03-06; key registered 2026-03-05, may need 1–2 business days) |
+| S6a | Run `build_isin_map.py` to populate `bond_isin_map.parquet` (prerequisite for S6) | DART rate limits; run with `--sample 50` first |
 | S7 | Expand `labels.csv` to ≥10 rows → unlock `bootstrap_threshold.py`, `lasso_beneish.py`, `rf_feature_importance.py` | Labeling decision |
 
 ## Open Backlog

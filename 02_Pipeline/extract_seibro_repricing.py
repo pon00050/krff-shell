@@ -4,20 +4,28 @@ extract_seibro_repricing.py — Fetch CB/BW repricing + exercise history from SE
 Enriches cb_bw_events.parquet by populating repricing_history and exercise_events
 columns for each event row using the SEIBRO REST API via data.go.kr.
 
-Data source: api.seibro.or.kr (data.go.kr datasets 15001145, 15074595)
+Data source: api.seibro.or.kr (data.go.kr dataset 15001145)
 API format: XML (parsed with xml.etree.ElementTree)
 Rate limit: 100 calls/day (development), no-limit in production
-Join key: (corp_code, bond_type) + date proximity (±30 days)
+Join key: bond ISIN (12-char, e.g. KR62797117B7) — requires bond_isin_map.parquet
 
 Prerequisites:
   - Register on data.go.kr (free, instant)
-  - Apply for API key on datasets 15001145 and 15074595 (auto-approved for dev)
+  - Apply for API key on dataset 15001145 (auto-approved for dev)
   - Add SEIBRO_API_KEY to .env
+  - Run build_isin_map.py first to produce 01_Data/processed/bond_isin_map.parquet
+
+Endpoints used (both from dataset 15001145 — StockSvc):
+  - getXrcStkOptionXrcInfoN1: exercise conditions + repricing (리픽싱) per bond ISIN
+  - getXrcStkStatInfoN1:      CB/BW bond details (exercise price, terms) per bond ISIN
+
+Note: BondSvc/getRgtXrcInfo and SecDepoStat/getCvreqStat are aggregate-only (market-wide)
+and cannot be used for per-company analysis. See 00_Reference/38_SEIBRO_API_Credentials.md.
 
 Outputs:
-  01_Data/processed/cb_bw_events.parquet  (updated in-place with repricing data)
-  01_Data/raw/seibro/repricings/<corp_code>.json  (raw cache per company)
-  01_Data/raw/seibro/exercises/<corp_code>.json   (raw cache per company)
+  01_Data/processed/cb_bw_events.parquet        (updated in-place with repricing data)
+  01_Data/raw/seibro/repricings/<bond_isin>.json (raw cache per bond)
+  01_Data/raw/seibro/exercises/<bond_isin>.json  (raw cache per bond)
 
 Usage:
   python 02_Pipeline/extract_seibro_repricing.py
@@ -56,13 +64,13 @@ ROOT = Path(__file__).parent.parent
 RAW = ROOT / "01_Data" / "raw"
 PROCESSED = ROOT / "01_Data" / "processed"
 
-SEIBRO_BASE = "http://api.seibro.or.kr/openapi/service"
+SEIBRO_BASE = "https://api.seibro.or.kr/openapi/service"
 
-# dataset 15001145 — stock info service (repricing / exercise conditions)
-REPRICING_SVC = f"{SEIBRO_BASE}/StockInfoSvc/getStkcirtBdInfo"
-
-# dataset 15074595 — bond info service (exercise history)
-EXERCISE_SVC = f"{SEIBRO_BASE}/BondSvc/getRgtXrcInfo"
+# dataset 15001145 — StockSvc (per-bond; requires bondIsin parameter)
+# getXrcStkOptionXrcInfoN1: exercise conditions and repricing (리픽싱)
+REPRICING_SVC = f"{SEIBRO_BASE}/StockSvc/getXrcStkOptionXrcInfoN1"
+# getXrcStkStatInfoN1: CB/BW bond details (exercise price, exercise ratio, terms)
+EXERCISE_SVC = f"{SEIBRO_BASE}/StockSvc/getXrcStkStatInfoN1"
 
 SLEEP_DEFAULT = 1.0  # SEIBRO is more restrictive than DART
 MAX_RETRIES = 3
@@ -72,8 +80,8 @@ def _seibro_api_key() -> str:
     key = os.getenv("SEIBRO_API_KEY", "")
     if not key or key == "your_seibro_api_key_here":
         raise EnvironmentError(
-            "SEIBRO_API_KEY not set. Register on data.go.kr, apply for datasets "
-            "15001145 + 15074595, add key to .env as SEIBRO_API_KEY=<your_key>"
+            "SEIBRO_API_KEY not set. Register on data.go.kr, apply for dataset "
+            "15001145, add key to .env as SEIBRO_API_KEY=<your_key>"
         )
     return key
 
@@ -95,6 +103,12 @@ def _fetch_xml(url: str, params: dict) -> ET.Element | None:
             resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
             root = ET.fromstring(resp.content)
+            # Check SEIBRO result code
+            result_code = _xml_text(root.find("header"), "resultCode")
+            if result_code and result_code != "00":
+                result_msg = _xml_text(root.find("header"), "resultMsg")
+                log.warning("SEIBRO API error code=%s msg=%r (url=%s)", result_code, result_msg, url)
+                return None
             return root
         except ET.ParseError as exc:
             log.warning("XML parse error (attempt %d/%d): %s", attempt + 1, MAX_RETRIES, exc)
@@ -120,11 +134,38 @@ def _normalise_date(raw: str) -> str:
     return s[:8] if len(s) >= 8 else s
 
 
-def fetch_repricing_for_company(
-    corp_code: str, api_key: str
+def _load_isin_map() -> dict[str, list[str]]:
+    """
+    Load bond_isin_map.parquet → {corp_code (8-char): [isin1, isin2, ...]}
+
+    Requires build_isin_map.py to have been run first.
+    Returns empty dict if the file does not exist.
+    """
+    map_path = PROCESSED / "bond_isin_map.parquet"
+    if not map_path.exists():
+        log.warning(
+            "bond_isin_map.parquet not found. Run build_isin_map.py first. "
+            "Extractor will skip all companies."
+        )
+        return {}
+    df = pd.read_parquet(map_path)
+    result: dict[str, list[str]] = {}
+    for _, row in df.iterrows():
+        cc = str(row["corp_code"]).zfill(8)
+        isin = str(row["bond_isin"]).strip()
+        if isin:
+            result.setdefault(cc, []).append(isin)
+    log.info("Loaded ISIN map: %d corp_codes, %d total bonds", len(result), sum(len(v) for v in result.values()))
+    return result
+
+
+def fetch_repricing_for_bond(
+    bond_isin: str, corp_code: str, api_key: str
 ) -> list[dict]:
     """
-    Fetch repricing (리픽싱) history for one company from SEIBRO dataset 15001145.
+    Fetch repricing (리픽싱) history for one bond ISIN from SEIBRO dataset 15001145.
+
+    Uses getXrcStkOptionXrcInfoN1 (exercise conditions + repricing per bond).
 
     Returns list of dicts with keys matching the bilingual schema used by
     run_cb_bw_timelines.py score_events():
@@ -134,9 +175,8 @@ def fetch_repricing_for_company(
       {"조정일자": "YYYYMMDD", "조정가액": float}
     """
     params = {
-        "serviceKey": api_key,
-        "isinCd": "",            # leave blank to search by corp_code
-        "corpCd": corp_code,     # company code (may need SEIBRO internal code)
+        "ServiceKey": api_key,
+        "bondIsin": bond_isin,
         "numOfRows": "100",
         "pageNo": "1",
     }
@@ -146,7 +186,6 @@ def fetch_repricing_for_company(
 
     items = root.findall(".//item")
     if not items:
-        # Try alternate path — SEIBRO XML structure varies by service version
         items = root.findall(".//items/item")
 
     repricings: list[dict] = []
@@ -178,15 +217,17 @@ def fetch_repricing_for_company(
             "조정가액": price,
         })
 
-    log.debug("corp_code=%s: %d repricing records", corp_code, len(repricings))
+    log.debug("bond_isin=%s corp_code=%s: %d repricing records", bond_isin, corp_code, len(repricings))
     return repricings
 
 
-def fetch_exercises_for_company(
-    corp_code: str, api_key: str
+def fetch_exercises_for_bond(
+    bond_isin: str, corp_code: str, api_key: str
 ) -> list[dict]:
     """
-    Fetch exercise/conversion history for one company from SEIBRO dataset 15074595.
+    Fetch exercise/conversion details for one bond ISIN from SEIBRO dataset 15001145.
+
+    Uses getXrcStkStatInfoN1 (CB/BW bond details including exercise terms).
 
     Returns list of dicts with keys matching the bilingual schema used by
     run_cb_bw_timelines.py score_events():
@@ -196,8 +237,8 @@ def fetch_exercises_for_company(
       {"권리행사일": "YYYYMMDD"}
     """
     params = {
-        "serviceKey": api_key,
-        "corpCd": corp_code,
+        "ServiceKey": api_key,
+        "bondIsin": bond_isin,
         "numOfRows": "100",
         "pageNo": "1",
     }
@@ -243,7 +284,7 @@ def fetch_exercises_for_company(
             "권리행사일": norm_date,
         })
 
-    log.debug("corp_code=%s: %d exercise records", corp_code, len(exercises))
+    log.debug("bond_isin=%s corp_code=%s: %d exercise records", bond_isin, corp_code, len(exercises))
     return exercises
 
 
@@ -254,14 +295,13 @@ def _match_to_event(
     window_days: int = 90,
 ) -> list[dict]:
     """
-    Filter records to those within window_days of the event issue_date.
+    Filter records to those on or after the event issue_date.
 
-    Repricing and exercise events can occur up to several years after issuance,
-    but for initial join we use ±window_days from issue_date as a conservative
-    first pass. The scoring function applies its own temporal logic.
+    Repricing and exercise events occur after issuance. We keep all records
+    from issue_date onward; the scoring function applies its own temporal logic.
 
     date_key: the key in each record dict that holds the event date (YYYYMMDD).
-    window_days: half-window around issue_date to include (default 90 = ±3 months).
+    window_days: unused (kept for API compatibility); filter is issue_date-forward.
     """
     try:
         issue_dt = pd.to_datetime(event_issue_date, errors="coerce")
@@ -282,7 +322,6 @@ def _match_to_event(
             if pd.isna(rec_dt):
                 matched.append(rec)
                 continue
-            # Include if after issue_date (repricing/exercise happens after issuance)
             if rec_dt >= issue_dt:
                 matched.append(rec)
         except Exception:
@@ -322,10 +361,13 @@ def enrich_cb_bw_parquet(
     Read cb_bw_events.parquet, enrich repricing_history and exercise_events columns,
     write back to the same file.
 
-    When force=False: only enriches rows where repricing_history == "[]".
+    Loops over (corp_code, bond_isin) pairs from bond_isin_map.parquet.
+    Cache files are named by bond ISIN (not corp_code).
+
+    When force=False: only enriches corp_codes where repricing_history == "[]".
     When force=True: re-fetches for all corp_codes.
 
-    dry_run=True: fetches and caches data but does NOT write back to parquet.
+    dry_run=True: fetches from API (or uses cache) but does NOT write back to parquet.
     """
     cb_path = PROCESSED / "cb_bw_events.parquet"
     if not cb_path.exists():
@@ -335,6 +377,12 @@ def enrich_cb_bw_parquet(
     df = pd.read_parquet(cb_path)
     log.info("Loaded %d CB/BW events from %s", len(df), cb_path)
 
+    # Load ISIN map (corp_code → [isin, ...])
+    isin_map = _load_isin_map()
+    if not isin_map:
+        log.error("No ISIN map available. Run build_isin_map.py first.")
+        return df
+
     if not dry_run:
         api_key = _seibro_api_key()
     else:
@@ -343,62 +391,77 @@ def enrich_cb_bw_parquet(
 
     # Identify corp_codes to enrich
     if force or rebuild:
-        corps_to_enrich = df["corp_code"].unique().tolist()
+        corps_to_enrich = df["corp_code"].astype(str).str.zfill(8).unique().tolist()
     else:
-        # Only enrich rows that still have empty arrays
         mask = df["repricing_history"].apply(
             lambda x: x == "[]" if isinstance(x, str) else True
         )
-        corps_to_enrich = df.loc[mask, "corp_code"].unique().tolist()
+        corps_to_enrich = df.loc[mask, "corp_code"].astype(str).str.zfill(8).unique().tolist()
+
+    # Build (corp_code, isin) pairs, restricted to companies in ISIN map
+    pairs: list[tuple[str, str]] = []
+    for cc in corps_to_enrich:
+        isins = isin_map.get(cc, [])
+        for isin in isins:
+            pairs.append((cc, isin))
+
+    if not pairs:
+        log.warning("No (corp_code, ISIN) pairs to enrich. Check bond_isin_map.parquet.")
+        return df
 
     if sample is not None:
-        corps_to_enrich = corps_to_enrich[:sample]
-        log.info("--sample %d: limiting to %d corp_codes", sample, len(corps_to_enrich))
+        # Sample by unique corp_codes, not raw pairs
+        sample_corps = corps_to_enrich[:sample]
+        pairs = [(cc, isin) for cc, isin in pairs if cc in set(sample_corps)]
+        log.info("--sample %d: limiting to %d corp_codes (%d bond pairs)", sample, len(sample_corps), len(pairs))
 
-    log.info("Enriching %d corp_codes with SEIBRO repricing + exercise data", len(corps_to_enrich))
+    log.info("Enriching %d (corp_code, ISIN) pairs with SEIBRO repricing + exercise data", len(pairs))
 
-    # Cache directories
+    # Cache directories (named by ISIN)
     repricing_cache_dir = RAW / "seibro" / "repricings"
     exercise_cache_dir = RAW / "seibro" / "exercises"
     repricing_cache_dir.mkdir(parents=True, exist_ok=True)
     exercise_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Fetch and cache per company
+    # Fetch and cache per (corp_code, isin)
     repricing_by_corp: dict[str, list[dict]] = {}
     exercise_by_corp: dict[str, list[dict]] = {}
 
-    for i, corp_code in enumerate(corps_to_enrich, 1):
-        log.info("SEIBRO fetch %d/%d (corp_code=%s)", i, len(corps_to_enrich), corp_code)
+    for i, (corp_code, bond_isin) in enumerate(pairs, 1):
+        log.info(
+            "SEIBRO fetch %d/%d (corp_code=%s isin=%s)",
+            i, len(pairs), corp_code, bond_isin,
+        )
 
-        repr_cache = repricing_cache_dir / f"{corp_code}.json"
-        exer_cache = exercise_cache_dir / f"{corp_code}.json"
+        repr_cache = repricing_cache_dir / f"{bond_isin}.json"
+        exer_cache = exercise_cache_dir / f"{bond_isin}.json"
 
         repricings = _fetch_or_load_cache(
             repr_cache,
-            lambda cc=corp_code: fetch_repricing_for_company(cc, api_key),
+            lambda isin=bond_isin, cc=corp_code: fetch_repricing_for_bond(isin, cc, api_key),
             force, dry_run, sleep,
         )
         exercises = _fetch_or_load_cache(
             exer_cache,
-            lambda cc=corp_code: fetch_exercises_for_company(cc, api_key),
+            lambda isin=bond_isin, cc=corp_code: fetch_exercises_for_bond(isin, cc, api_key),
             force, dry_run, sleep,
         )
 
-        repricing_by_corp[corp_code] = repricings
-        exercise_by_corp[corp_code] = exercises
+        # Aggregate across multiple ISINs for the same corp_code
+        repricing_by_corp.setdefault(corp_code, []).extend(repricings)
+        exercise_by_corp.setdefault(corp_code, []).extend(exercises)
 
     if dry_run:
         log.info("--dry-run complete. No parquet updated.")
         return df
 
-    # Write enriched data back to parquet — collect all updates first, then
-    # assign both columns in two bulk operations instead of two df.at[] per row.
+    # Write enriched data back to parquet
     enriched_count = 0
     repricing_updates: dict[int, str] = {}
     exercise_updates: dict[int, str] = {}
 
     for idx, row in df.iterrows():
-        corp_code = row["corp_code"]
+        corp_code = str(row["corp_code"]).zfill(8)
         if corp_code not in repricing_by_corp:
             continue
 
@@ -415,8 +478,8 @@ def enrich_cb_bw_parquet(
             enriched_count += 1
 
     if repricing_updates:
-        df.loc[list(repricing_updates), "repricing_history"] = pd.Series(repricing_updates)
-        df.loc[list(exercise_updates), "exercise_events"] = pd.Series(exercise_updates)
+        df.loc[list(repricing_updates.keys()), "repricing_history"] = pd.Series(repricing_updates)
+        df.loc[list(exercise_updates.keys()), "exercise_events"] = pd.Series(exercise_updates)
 
     df.to_parquet(cb_path, index=False)
     log.info(
