@@ -9,6 +9,8 @@
 03_Analysis/*.csv
 03_Analysis/cb_bw_timelines/
 03_Analysis/officer_network/
+# Generated per-company forensic reports
+03_Analysis/reports/
 
 # Python
 __pycache__/

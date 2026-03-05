@@ -41,6 +41,7 @@ This project builds that infrastructure layer — so that researchers, journalis
 | `revenue_schedule.parquet` | `01_Data/processed/` | Revenue by customer/segment from 매출명세서 in 사업보고서 | 매출명세서 — 고객·품목별 매출 |
 | `dart_xbrl_crosswalk.csv` | `tests/fixtures/` | XBRL element → variable mapping; audit trail | XBRL 요소 → 재무 변수 매핑; 감사 추적 |
 | [`beneish_viz.html` ↗](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
+| `<corp_code>_report.html` | `03_Analysis/reports/` | Per-company forensic HTML report (all 4 milestones + AI synthesis) | 기업별 포렌식 HTML 보고서 |
 
 **Visual summary (no Python required):** [beneish_viz.html — Phase 1 결과 보기](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) — interactive Plotly charts, no Python required. / Python 없이 바로 보기.
 
@@ -163,7 +164,8 @@ kr-forensic-finance/
 │   ├── __init__.py                Package init
 │   ├── pipeline.py                Pipeline wrapper for CLI/API callers
 │   ├── analysis.py                Beneish screen wrapper
-│   └── charts.py                  Plotly chart generation
+│   ├── charts.py                  Plotly chart generation
+│   └── report.py                  Per-company HTML report generator (krff report)
 └── tests/
     ├── conftest.py                Shared fixtures (sys.path setup)
     ├── test_pipeline_invariants.py Schema/logic tests (run any time)
@@ -240,6 +242,28 @@ Test documentation is maintained locally in `00_Reference/`.
 Full schema spec is maintained locally in `00_Reference/17_MVP_Requirements.md`.
 
 **`top50_spot_check.csv`** (`tests/`) — Top 50 companies by M-Score with `corp_code`, `ticker`, `company_name`, `year`, `m_score`, `flag`.
+
+### Generating Per-Company Reports
+
+```bash
+krff report 01051092              # → 03_Analysis/reports/01051092_report.html
+krff report 01051092 --skip-claude  # skip AI synthesis (no API key needed)
+```
+
+Reports are self-contained HTML files. Run pipeline and analysis scripts first, then generate:
+
+```bash
+python 02_Pipeline/pipeline.py --market KOSDAQ --start 2021 --end 2023
+python 03_Analysis/beneish_screen.py
+python 03_Analysis/run_cb_bw_timelines.py
+python 03_Analysis/run_timing_anomalies.py
+python 03_Analysis/run_officer_network.py
+krff report <corp_code>
+```
+
+Set `ANTHROPIC_API_KEY` in `.env` to enable the AI synthesis section (claude-sonnet-4-6).
+
+**Data coverage:** Reports reflect 2019–2023 data. Re-run the pipeline to update.
 
 ### Further Reading
 
