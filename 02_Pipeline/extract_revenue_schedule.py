@@ -65,7 +65,7 @@ DART_HTML_HEADERS = {
 }
 
 # Labels to skip when parsing revenue tables
-_SKIP_LABELS = {"", "nan", "품목", "고객", "합계", "계", "구분"}
+_SKIP_LABELS = {"", "nan", "품목", "고객", "합계", "합 계", "합  계", "계", "소계", "구분"}
 
 VALID_PARSE_STATUSES = {"success", "no_subdoc", "parse_error", "no_filing", "fetch_error"}
 
@@ -113,7 +113,7 @@ def _fetch_annual_report_rcept_no(
     bgn_de = f"{year}0401"
     end_de = f"{year + 1}0630"
     try:
-        df = dart.list(corp_code, pblntf_ty="A", bgn_de=bgn_de, end_de=end_de)
+        df = dart.list(corp_code, start=bgn_de, end=end_de, kind="A")
     except Exception as exc:
         log.debug("dart.list failed for corp_code=%s year=%d: %s", corp_code, year, exc)
         return None
@@ -276,7 +276,8 @@ def _parse_revenue_table(html: str, report_year: int) -> list[dict] | None:
         rows = []
         for _, row in table.iterrows():
             label = str(row.iloc[0]).strip()
-            if not label or label.lower() == "nan" or label in _SKIP_LABELS:
+            label_normalized = " ".join(label.split())  # collapse internal whitespace
+            if not label or label.lower() == "nan" or label_normalized in _SKIP_LABELS:
                 continue
 
             for yr, col in year_map.items():
@@ -349,7 +350,7 @@ def fetch_revenue_schedule(
         log.info("--sample %d applied", sample)
 
     api_key = _dart_api_key()
-    dart = OpenDartReader.OpenDartReader(api_key)
+    dart = OpenDartReader(api_key)
 
     deadline = (
         datetime.datetime.now() + datetime.timedelta(minutes=max_minutes)

@@ -58,12 +58,17 @@ DART_HTML_HEADERS = {
     "Referer": "https://dart.fss.or.kr/",
 }
 
-# Column name aliases for bondholder tables — add variants as discovered
+# Column name aliases for bondholder tables — add variants as discovered (see KI-014)
 _BONDHOLDER_COL_ALIASES: dict[str, list[str]] = {
-    "holder_name":    ["성명/법인명", "사채권자명", "법인명", "성명", "권리자명", "인수인"],
-    "address":        ["주소", "소재지"],
-    "face_value_krw": ["사채권면액", "채권금액", "인수금액", "금액", "권면금액"],
-    "note":           ["비고", "참고"],
+    "holder_name":    [
+        "성명/법인명", "사채권자명", "발행 대상자명", "발행대상자명",
+        "채권자명", "법인명", "성명", "권리자명", "인수인",
+    ],
+    "address":        ["주소", "소재지", "사업자번호"],
+    "face_value_krw": [
+        "사채권면액", "발행권면", "채권금액", "납입금액", "인수금액", "권면금액",
+    ],
+    "note":           ["비고", "참고", "관계", "만기"],
 }
 
 VALID_PARSE_STATUSES = {"success", "no_subdoc", "parse_error", "no_filing", "fetch_error"}
@@ -110,7 +115,7 @@ def _fetch_cb_filings(
     TODO: only fetches first page — add pagination if a company has >100 CB filings.
     """
     try:
-        df = dart.list(corp_code, pblntf_ty="B", bgn_de=bgn_de, end_de=end_de)
+        df = dart.list(corp_code, start=bgn_de, end=end_de, kind="B")
     except Exception as exc:
         log.debug("dart.list failed for corp_code=%s: %s", corp_code, exc)
         return []
@@ -212,6 +217,16 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
         if isinstance(table.columns, pd.MultiIndex):
             table.columns = [" ".join(str(c) for c in col).strip() for col in table.columns]
 
+        # Promote row 0 to header when pd.read_html assigned integer indices
+        # (happens when the HTML table has no <th> row — all cells are <td>)
+        if (
+            len(table) > 1
+            and all(isinstance(c, int) for c in table.columns)
+            and table.iloc[0].notna().all()
+        ):
+            table.columns = [str(v).strip() for v in table.iloc[0]]
+            table = table.iloc[1:].reset_index(drop=True)
+
         col_map: dict[str, str] = {}
         for canonical, aliases in _BONDHOLDER_COL_ALIASES.items():
             for alias in aliases:
@@ -229,8 +244,10 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
         rows = []
         for _, row in table.iterrows():
             holder_name = str(row[col_map["holder_name"]]).strip()
-            # Skip empty or header-repeat rows
+            # Skip empty, header-repeat, or summary rows
             if not holder_name or holder_name.lower() == "nan":
+                continue
+            if holder_name in {"합계", "계", "소계", "합  계"}:
                 continue
             known_headers = set()
             for aliases in _BONDHOLDER_COL_ALIASES.values():
@@ -313,7 +330,7 @@ def fetch_bondholder_register(
         end_de = datetime.date.today().strftime("%Y%m%d")
 
     api_key = _dart_api_key()
-    dart = OpenDartReader.OpenDartReader(api_key)
+    dart = OpenDartReader(api_key)
 
     deadline = (
         datetime.datetime.now() + datetime.timedelta(minutes=max_minutes)
