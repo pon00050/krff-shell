@@ -272,3 +272,51 @@ def write_top50_spot_check(scores):
     except Exception:
         pass  # spot check is best-effort; never fail a test run over it
     yield
+
+
+# ─── Report acceptance tests (manual — requires real pipeline outputs) ────────
+
+class TestReportAcceptance:
+    """
+    Phase 2 acceptance: per-company HTML report generation.
+    Manual tests — requires pipeline outputs (parquets and CSVs).
+    Skip automatically if data files are missing.
+    """
+
+    def test_report_pcl_generates(self, tmp_path):
+        """Report for PCL (01051092) generates >20KB HTML with company name."""
+        beneish_p = PROCESSED / "beneish_scores.parquet"
+        if not beneish_p.exists():
+            pytest.skip("beneish_scores.parquet not found — run the pipeline first")
+
+        from src.report import generate_report
+
+        out = tmp_path / "01051092_report.html"
+        result = generate_report("01051092", output_path=out, skip_claude=True)
+        assert result.exists()
+        size = result.stat().st_size
+        assert size > 20_000, f"Report only {size} bytes — expected >20KB"
+        content = result.read_text(encoding="utf-8")
+        assert "피씨엘" in content or "PCL" in content, "Company name not found in report"
+        assert "M-Score" in content, "M-Score section missing"
+
+    def test_report_pcl_cb_bw_section(self, tmp_path):
+        """CB/BW section is populated if cb_bw_summary.csv exists."""
+        cb_bw_p = ROOT / "03_Analysis" / "cb_bw_summary.csv"
+        if not cb_bw_p.exists():
+            pytest.skip("cb_bw_summary.csv not found — run run_cb_bw_timelines.py first")
+
+        from src.report import generate_report
+
+        out = tmp_path / "01051092_cb_bw_report.html"
+        result = generate_report("01051092", output_path=out, skip_claude=True)
+        content = result.read_text(encoding="utf-8")
+        assert "CB/BW" in content, "CB/BW section missing"
+        # If PCL has CB/BW events, table columns should appear
+        df = pd.read_csv(cb_bw_p, encoding="utf-8-sig")
+        if "corp_code" in df.columns:
+            pcl_rows = df[df["corp_code"].astype(str).str.zfill(8) == "01051092"]
+            if not pcl_rows.empty:
+                assert "issue_date" in content or "bond_type" in content, (
+                    "CB/BW table columns missing despite PCL having events"
+                )

@@ -107,6 +107,21 @@ def charts(
 
 
 @app.command()
+def report(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code, e.g. 01051092"),
+    output_dir: Optional[Path] = typer.Option(None, help="Output dir (default: 03_Analysis/reports/)"),
+    skip_claude: bool = typer.Option(False, "--skip-claude", help="Skip Claude API synthesis"),
+) -> None:
+    """Generate a self-contained HTML forensic report for one company."""
+    from src.report import generate_report
+
+    out_path = (output_dir or (_ANALYSIS_DIR / "reports")) / f"{corp_code.zfill(8)}_report.html"
+    typer.echo(f"Generating report for corp_code={corp_code}...")
+    result = generate_report(corp_code=corp_code, output_path=out_path, skip_claude=skip_claude)
+    typer.echo(f"Wrote {result} ({result.stat().st_size / 1024:.0f} KB)")
+
+
+@app.command()
 def version() -> None:
     """Print kr-forensic-finance version."""
     typer.echo(f"kr-forensic-finance v{_VERSION}")
