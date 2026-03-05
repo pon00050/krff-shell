@@ -2061,3 +2061,76 @@ class TestReportModule:
         assert len(result) == 1
         assert result[0]["severity"] == "high"
         assert result[0]["flag_type"] == "SGI_HIGH"
+
+
+# ─── Category 20: depreciation_schedule schema ────────────────────────────────
+
+@pytest.mark.skipif(
+    not (PROCESSED / "depreciation_schedule.parquet").exists(),
+    reason="depreciation_schedule.parquet not found — run extract_depreciation_schedule.py first",
+)
+class TestDepreciationScheduleSchema:
+    """
+    Schema contract for depreciation_schedule.parquet.
+    Skips gracefully if the parquet has not been generated yet.
+    """
+
+    @pytest.fixture
+    def depr_schedule(self):
+        p = PROCESSED / "depreciation_schedule.parquet"
+        return pd.read_parquet(p)
+
+    def test_required_columns(self, depr_schedule):
+        required = [
+            "corp_code", "rcept_no", "report_year", "asset_category",
+            "depr_method", "useful_life_yr", "depr_rate_pct",
+            "depr_amount_krw", "parse_status",
+        ]
+        missing = [c for c in required if c not in depr_schedule.columns]
+        assert not missing, f"depreciation_schedule.parquet missing columns: {missing}"
+
+    def test_corp_code_is_8digit_string(self, depr_schedule):
+        non_null = depr_schedule["corp_code"].dropna()
+        assert (non_null.str.len() == 8).all(), (
+            "corp_code must be 8-digit zero-padded string"
+        )
+
+    def test_report_year_is_integer_dtype(self, depr_schedule):
+        assert pd.api.types.is_integer_dtype(depr_schedule["report_year"]), (
+            f"report_year must be integer dtype, got {depr_schedule['report_year'].dtype}"
+        )
+
+    def test_report_year_in_valid_range(self, depr_schedule):
+        non_null = depr_schedule["report_year"].dropna()
+        if len(non_null) > 0:
+            assert non_null.min() >= 2015, "report_year should be >= 2015"
+            assert non_null.max() <= 2030, "report_year should be <= 2030"
+
+    def test_parse_status_valid_values(self, depr_schedule):
+        valid = {"no_filing", "fetch_error", "no_subdoc", "parse_error", "success"}
+        actual = set(depr_schedule["parse_status"].dropna().unique())
+        invalid = actual - valid
+        assert not invalid, f"Unexpected parse_status values: {invalid}"
+
+    def test_success_rows_have_asset_category(self, depr_schedule):
+        success = depr_schedule[depr_schedule["parse_status"] == "success"]
+        if len(success) > 0:
+            empty = success["asset_category"].isna() | (success["asset_category"] == "")
+            assert not empty.any(), "success rows must have non-empty asset_category"
+
+    def test_no_duplicate_dedup_key(self, depr_schedule):
+        dup = depr_schedule.duplicated(
+            subset=["corp_code", "rcept_no", "asset_category", "report_year"]
+        )
+        assert not dup.any(), (
+            f"depreciation_schedule.parquet has {dup.sum()} duplicate rows "
+            f"on (corp_code, rcept_no, asset_category, report_year)"
+        )
+
+    def test_numeric_columns_are_float(self, depr_schedule):
+        for col in ("useful_life_yr", "depr_rate_pct", "depr_amount_krw"):
+            non_null = depr_schedule[col].dropna()
+            if len(non_null) > 0:
+                assert pd.api.types.is_float_dtype(depr_schedule[col]), (
+                    f"{col} must be float dtype, got {depr_schedule[col].dtype}"
+                )
