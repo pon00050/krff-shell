@@ -16,6 +16,7 @@ classifiers = [
     "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
+    "anthropic>=0.40.0",
     "opendartreader",
     "pykrx",
     "pandas",
