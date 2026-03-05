@@ -1699,29 +1699,29 @@ class TestBondholderParseLogic:
         assert result is None
 
     def test_parse_krw_parenthetical_negative(self):
-        from extract_bondholder_register import _parse_krw
+        from _pipeline_helpers import _parse_krw
         assert _parse_krw("(50,000,000)") == -50_000_000
 
     def test_parse_krw_comma_formatting(self):
-        from extract_bondholder_register import _parse_krw
+        from _pipeline_helpers import _parse_krw
         assert _parse_krw("1,234,567") == 1_234_567
 
     def test_parse_krw_cheonwon_multiplier(self):
-        from extract_bondholder_register import _parse_krw
+        from _pipeline_helpers import _parse_krw
         assert _parse_krw("100,000", unit_multiplier=1000) == 100_000_000
 
     def test_parse_krw_empty_string_returns_none(self):
-        from extract_bondholder_register import _parse_krw
+        from _pipeline_helpers import _parse_krw
         assert _parse_krw("") is None
         assert _parse_krw(None) is None
 
     def test_detect_unit_multiplier_cheonwon(self):
-        from extract_bondholder_register import _detect_unit_multiplier
+        from _pipeline_helpers import _detect_unit_multiplier
         html_cheonwon = "<html>(단위: 천원)</html>"
         assert _detect_unit_multiplier(html_cheonwon) == 1000
 
     def test_detect_unit_multiplier_no_unit(self):
-        from extract_bondholder_register import _detect_unit_multiplier
+        from _pipeline_helpers import _detect_unit_multiplier
         html_plain = "<html><body>일반 표</body></html>"
         assert _detect_unit_multiplier(html_plain) == 1
 

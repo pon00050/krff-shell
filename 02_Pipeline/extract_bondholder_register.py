@@ -2,7 +2,7 @@
 extract_bondholder_register.py — Phase 2: 사채권자명부 from DART CB filings.
 
 Three-step DART chain per company:
-  1. dart.list(corp_code, pblntf_ty="B") → filter to 전환사채 filings → rcept_nos
+  1. dart.list(corp_code, kind="B") → filter to 전환사채 filings → rcept_nos
   2. dart.sub_docs(rcept_no, match="사채권자명부") → sub-document URL
   3. requests.get(url) + pd.read_html(html) → bondholder table
 
@@ -25,13 +25,20 @@ import datetime
 import logging
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from _pipeline_helpers import _dart_api_key, _norm_corp_code
+from _pipeline_helpers import (
+    DART_HTML_HEADERS,
+    _dart_api_key,
+    _detect_unit_multiplier,
+    _norm_corp_code,
+    _parse_krw,
+)
 
 load_dotenv()
 
@@ -50,14 +57,6 @@ RAW_DIR = ROOT / "01_Data" / "raw" / "dart" / "bondholder_register"
 
 SLEEP_DEFAULT = 0.5
 
-DART_HTML_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://dart.fss.or.kr/",
-}
-
 # Column name aliases for bondholder tables — add variants as discovered (see KI-014)
 _BONDHOLDER_COL_ALIASES: dict[str, list[str]] = {
     "holder_name":    [
@@ -71,33 +70,10 @@ _BONDHOLDER_COL_ALIASES: dict[str, list[str]] = {
     "note":           ["비고", "참고", "관계", "만기"],
 }
 
-VALID_PARSE_STATUSES = {"success", "no_subdoc", "parse_error", "no_filing", "fetch_error"}
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _parse_krw(raw, unit_multiplier: int = 1) -> int | None:
-    """Parse a KRW integer from raw table cell value. Handles comma formatting,
-    parenthetical negatives, and unit multiplier (e.g. 1000 for 천원 tables)."""
-    if not raw or not str(raw).strip():
-        return None
-    s = str(raw).strip().replace(",", "").replace("%", "")
-    negative = s.startswith("(") and s.endswith(")")
-    if negative:
-        s = s[1:-1]
-    try:
-        val = int(float(s))
-        return -val * unit_multiplier if negative else val * unit_multiplier
-    except (ValueError, TypeError):
-        return None
-
-
-def _detect_unit_multiplier(html: str) -> int:
-    """Return 1000 if the first 2000 chars of html mention 천원, else 1."""
-    snippet = html[:2000]
-    if "천원" in snippet or "(단위: 천원)" in snippet:
-        return 1000
-    return 1
+REQUIRED_COLS = [
+    "corp_code", "rcept_no", "rcept_dt", "holder_name", "address",
+    "face_value_krw", "note", "parse_status",
+]
 
 
 # ── DART chain ────────────────────────────────────────────────────────────────
@@ -199,8 +175,6 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
     unit_multiplier = _detect_unit_multiplier(html)
 
     # Try lxml first, fall back to html5lib
-    from io import StringIO
-
     tables = None
     for flavor in ("lxml", "html5lib"):
         try:
@@ -241,6 +215,10 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
         if "holder_name" not in col_map:
             continue
 
+        known_headers: set[str] = set()
+        for aliases in _BONDHOLDER_COL_ALIASES.values():
+            known_headers.update(a.strip() for a in aliases)
+
         rows = []
         for _, row in table.iterrows():
             holder_name = str(row[col_map["holder_name"]]).strip()
@@ -249,9 +227,6 @@ def _parse_bondholder_table(html: str) -> list[dict] | None:
                 continue
             if holder_name in {"합계", "계", "소계", "합  계"}:
                 continue
-            known_headers = set()
-            for aliases in _BONDHOLDER_COL_ALIASES.values():
-                known_headers.update(a.strip() for a in aliases)
             if holder_name in known_headers:
                 continue
 
@@ -362,7 +337,6 @@ def fetch_bondholder_register(
                 "parse_status": "no_filing",
             })
             parse_status_counts["no_filing"] = parse_status_counts.get("no_filing", 0) + 1
-            time.sleep(sleep)
             continue
 
         for rcept_no, rcept_dt in cb_filings:
@@ -383,7 +357,7 @@ def fetch_bondholder_register(
                 time.sleep(sleep)
                 continue
 
-            parsed = _parse_bondholder_table(html) if html else None
+            parsed = _parse_bondholder_table(html)
             if parsed is None:
                 all_rows.append({
                     "corp_code": corp_code,
@@ -410,11 +384,6 @@ def fetch_bondholder_register(
             time.sleep(sleep)
 
     log.info("parse_status distribution: %s", parse_status_counts)
-
-    REQUIRED_COLS = [
-        "corp_code", "rcept_no", "rcept_dt", "holder_name", "address",
-        "face_value_krw", "note", "parse_status",
-    ]
 
     if not all_rows:
         df_out = pd.DataFrame(columns=REQUIRED_COLS)

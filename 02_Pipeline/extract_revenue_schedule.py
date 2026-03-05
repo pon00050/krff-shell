@@ -2,7 +2,7 @@
 extract_revenue_schedule.py — Phase 2: 매출명세서 (revenue schedule) from DART 사업보고서.
 
 Three-step DART chain per company-year:
-  1. dart.list(corp_code, pblntf_ty="A") → filter to annual 사업보고서 → rcept_no per year
+  1. dart.list(corp_code, kind="A") → filter to annual 사업보고서 → rcept_no per year
   2. dart.sub_docs(rcept_no, match="매출") → select 매출명세서 attachment by title
   3. requests.get(url) + pd.read_html(html) → revenue-by-customer/segment table
 
@@ -30,13 +30,20 @@ import logging
 import re
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from _pipeline_helpers import _dart_api_key, _norm_corp_code
+from _pipeline_helpers import (
+    DART_HTML_HEADERS,
+    _dart_api_key,
+    _detect_unit_multiplier,
+    _norm_corp_code,
+    _parse_krw,
+)
 
 load_dotenv()
 
@@ -56,44 +63,13 @@ RAW_DIR = ROOT / "01_Data" / "raw" / "dart" / "revenue_schedule"
 SLEEP_DEFAULT = 0.5
 DEFAULT_M_SCORE_THRESHOLD = -1.78
 
-DART_HTML_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://dart.fss.or.kr/",
-}
-
 # Labels to skip when parsing revenue tables
 _SKIP_LABELS = {"", "nan", "품목", "고객", "합계", "합 계", "합  계", "계", "소계", "구분"}
 
-VALID_PARSE_STATUSES = {"success", "no_subdoc", "parse_error", "no_filing", "fetch_error"}
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _parse_krw(raw, unit_multiplier: int = 1) -> int | None:
-    """Parse a KRW integer from raw table cell value. Handles comma formatting,
-    parenthetical negatives, and unit multiplier (e.g. 1000 for 천원 tables)."""
-    if not raw or not str(raw).strip():
-        return None
-    s = str(raw).strip().replace(",", "").replace("%", "")
-    negative = s.startswith("(") and s.endswith(")")
-    if negative:
-        s = s[1:-1]
-    try:
-        val = int(float(s))
-        return -val * unit_multiplier if negative else val * unit_multiplier
-    except (ValueError, TypeError):
-        return None
-
-
-def _detect_unit_multiplier(html: str) -> int:
-    """Return 1000 if the first 2000 chars of html mention 천원, else 1."""
-    snippet = html[:2000]
-    if "천원" in snippet or "(단위: 천원)" in snippet:
-        return 1000
-    return 1
+REQUIRED_COLS = [
+    "corp_code", "rcept_no", "report_year", "row_label",
+    "revenue_krw", "revenue_year", "parse_status",
+]
 
 
 # ── DART chain ────────────────────────────────────────────────────────────────
@@ -245,8 +221,6 @@ def _parse_revenue_table(html: str, report_year: int) -> list[dict] | None:
     Returns None if no valid table found.
     Each dict has: row_label, revenue_krw, revenue_year.
     """
-    from io import StringIO
-
     unit_multiplier = _detect_unit_multiplier(html)
 
     tables = None
@@ -382,7 +356,6 @@ def fetch_revenue_schedule(
                     "parse_status": "no_filing",
                 })
                 parse_status_counts["no_filing"] = parse_status_counts.get("no_filing", 0) + 1
-                time.sleep(sleep)
                 continue
 
             html, html_status = _fetch_revenue_html(rcept_no, dart, RAW_DIR, force=force)
@@ -401,7 +374,7 @@ def fetch_revenue_schedule(
                 time.sleep(sleep)
                 continue
 
-            parsed = _parse_revenue_table(html, year) if html else None
+            parsed = _parse_revenue_table(html, year)
             if parsed is None:
                 all_rows.append({
                     "corp_code": corp_code,
@@ -427,11 +400,6 @@ def fetch_revenue_schedule(
             time.sleep(sleep)
 
     log.info("parse_status distribution: %s", parse_status_counts)
-
-    REQUIRED_COLS = [
-        "corp_code", "rcept_no", "report_year", "row_label",
-        "revenue_krw", "revenue_year", "parse_status",
-    ]
 
     if not all_rows:
         df_out = pd.DataFrame(columns=REQUIRED_COLS)

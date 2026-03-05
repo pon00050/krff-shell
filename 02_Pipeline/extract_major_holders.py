@@ -49,6 +49,11 @@ RAW_DIR = ROOT / "01_Data" / "raw" / "dart" / "major_holders"
 
 DART_MAJORSTOCK_URL = "https://opendart.fss.or.kr/api/majorstock.json"
 SLEEP_DEFAULT = 0.5
+REQUIRED_COLS = [
+    "corp_code", "rcept_no", "rcept_dt", "corp_name", "report_tp", "repror",
+    "stkqy", "stkqy_irds", "stkrt", "stkrt_irds", "ctr_stkqy", "ctr_stkrt",
+    "report_resn",
+]
 
 
 def _safe_float(val) -> float | None:
@@ -188,12 +193,6 @@ def fetch_major_holders(
         rows = _fetch_majorstock(corp_code, api_key, RAW_DIR, force=force)
         all_rows.extend(rows)
         time.sleep(sleep)
-
-    REQUIRED_COLS = [
-        "corp_code", "rcept_no", "rcept_dt", "corp_name", "report_tp", "repror",
-        "stkqy", "stkqy_irds", "stkrt", "stkrt_irds", "ctr_stkqy", "ctr_stkrt",
-        "report_resn",
-    ]
 
     if not all_rows:
         df_out = pd.DataFrame(columns=REQUIRED_COLS)
