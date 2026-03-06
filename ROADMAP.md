@@ -17,7 +17,7 @@
 | `price_volume.parquet` | OHLCV ±60 day windows around events |
 | `corp_ticker_map.parquet` | corp_code ↔ ticker mapping |
 | `officer_holdings.parquet` | Officer holding changes |
-| `disclosures.parquet` | DART filing listings |
+| `disclosures.parquet` | DART filing listings — 921 corps / 271,504 rows (expanded from 58 corps in session 31) |
 | `major_holders.parquet` | 5%+ ownership threshold filings |
 | `bondholder_register.parquet` | CB bondholder names from 사채권자명부 |
 | `revenue_schedule.parquet` | Revenue by customer/segment from 매출명세서 |
@@ -37,7 +37,7 @@
 | S8 | Run `extract_depreciation_schedule.py` for 5 Tier 1 leads | All 15 rows = parse_error or no_filing; DART sub_docs keyword matching returns wrong table type for these companies; Category 20 tests flip from 8 skipped → **8 passed**; FINDINGS.md §4 updated with root cause |
 | S10a | Extract disclosures for 50 unflagged control companies | `disclosures.parquet` expanded from 8 → **58 corp_codes** (3,581 → 27,486 rows; +23,905 control rows) |
 | S10b | Rebuild FDR null from control disclosures × price data | Control null: 2,000 quiet events; **687/687 test events trivially survive BH** — KI-021 diagnosed: pre-filtering makes any clean null give p≈0; valid test requires unfiltered input → S11 |
-| S11 | Proper FDR disclosure leakage test (fixes KI-021) | `fdr_disclosure_leakage.py` written; **2/822 events survive BH at q=0.043** — 피씨엘 2021-01-18 (+287%) and 프로브잇 2021-06-14 (+143%); p-value distribution shows mild enrichment near 0 (69 vs 41 expected in [0,0.05)); KI-021 RESOLVED; see `FINDINGS.md` §1 |
+| S11 | Proper FDR disclosure leakage test (fixes KI-021) | `fdr_disclosure_leakage.py` written; **2/822 events survive BH at q=0.043** — 피씨엘 2021-01-18 (+287%) and 프로브잇 2021-06-14 (+143%); p-value distribution shows mild enrichment near 0; KI-021 RESOLVED. **Revised in session 31** (disclosures expanded 58→921 corps): **0/822 survivors** — previous 2-survivor result was artifact of weak null (50 corps); with 811 control corps the signal doesn't survive BH; mild p-value enrichment near 0 persists (72 vs 41 expected) |
 
 ## Statistical Analysis — Completed (Session 24)
 
