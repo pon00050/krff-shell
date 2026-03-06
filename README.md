@@ -64,6 +64,7 @@ krff run --market KOSDAQ --start 2019 --end 2023
 python 03_Analysis/beneish_screen.py   # compute M-scores → beneish_scores.parquet
 krff analyze                           # print score summary
 krff charts                            # write 03_Analysis/beneish_viz.html
+krff status                            # show artifact inventory (rows, sizes, dates)
 krff --help                            # list all commands
 ```
 

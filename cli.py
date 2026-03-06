@@ -4,6 +4,7 @@ Usage:
   krff run [OPTIONS]     Run the ETL pipeline
   krff analyze           Load and print beneish_scores.parquet
   krff charts            Generate beneish_viz.html from beneish_scores.parquet
+  krff status            Show pipeline artifact inventory
   krff version           Print version
 """
 
@@ -119,6 +120,16 @@ def report(
     typer.echo(f"Generating report for corp_code={corp_code}...")
     result = generate_report(corp_code=corp_code, output_path=out_path, skip_claude=skip_claude)
     typer.echo(f"Wrote {result} ({result.stat().st_size / 1024:.0f} KB)")
+
+
+@app.command()
+def status(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Include DART run summary details"),
+) -> None:
+    """Show pipeline data status: which artifacts exist, row counts, and sizes."""
+    from src.status import get_status, format_status
+
+    typer.echo(format_status(get_status(), verbose=verbose))
 
 
 @app.command()
