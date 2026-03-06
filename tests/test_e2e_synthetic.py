@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.constants import BENEISH_THRESHOLD
+
 ROOT = Path(__file__).resolve().parents[1]
 # conftest.py already adds 02_Pipeline to sys.path
 
@@ -271,7 +273,7 @@ def _compute_beneish(df_fin: pd.DataFrame) -> pd.DataFrame:
     )
     df = df.drop(columns=["_null_core"])
     df.loc[df["revenue_l"].isna(), "m_score"] = np.nan
-    df["flag"] = df["m_score"].notna() & (df["m_score"] > -1.78)
+    df["flag"] = df["m_score"].notna() & (df["m_score"] > BENEISH_THRESHOLD)
 
     fp_sectors = {"G3510", "G3520"}
     if "wics_sector_code" in df.columns:
@@ -416,10 +418,10 @@ class TestBeneishE2E:
         for _, row in scored.iterrows():
             if pd.isna(row["m_score"]):
                 assert row["flag"] == False, f"{row['corp_code']}: null m_score should have flag=False"
-            elif row["m_score"] > -1.78:
-                assert row["flag"] == True, f"{row['corp_code']}: m_score={row['m_score']} > -1.78 should be flagged"
+            elif row["m_score"] > BENEISH_THRESHOLD:
+                assert row["flag"] == True, f"{row['corp_code']}: m_score={row['m_score']} > {BENEISH_THRESHOLD} should be flagged"
             else:
-                assert row["flag"] == False, f"{row['corp_code']}: m_score={row['m_score']} <= -1.78 should not be flagged"
+                assert row["flag"] == False, f"{row['corp_code']}: m_score={row['m_score']} <= {BENEISH_THRESHOLD} should not be flagged"
 
     def test_dart_link_format(self, scored):
         """Every row has a DART link containing its corp_code."""

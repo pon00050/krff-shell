@@ -1900,13 +1900,10 @@ class TestReportModule:
                 return df.copy()
             return df[df["corp_code"].astype(str) == cc].copy()
 
-        monkeypatch.setattr(rpt, "_load_beneish", lambda cc: _filter(beneish_df, cc))
-        monkeypatch.setattr(rpt, "_load_company_name", lambda cc: "피씨엘" if cc == "01051092" else cc)
-        monkeypatch.setattr(rpt, "_load_cb_bw", lambda cc: _filter(cb_bw_df, cc))
-        monkeypatch.setattr(rpt, "_load_timing_anomalies", lambda cc: _filter(timing_df, cc))
+        monkeypatch.setattr(rpt, "_load_parquet", lambda name, cc, sort_by=None: _filter(beneish_df, cc) if "beneish" in name else pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_company_name", lambda cc, beneish_df=None: "피씨엘" if cc == "01051092" else cc)
+        monkeypatch.setattr(rpt, "_load_csv", lambda path, cc: _filter(cb_bw_df, cc) if "cb_bw" in str(path) else _filter(timing_df, cc))
         monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_officer_holdings", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_financials", lambda cc: pd.DataFrame())
         _nonexistent = pathlib.Path("/nonexistent/fake.csv")
         monkeypatch.setattr(rpt, "_CB_BW_CSV", _nonexistent)
         monkeypatch.setattr(rpt, "_TIMING_CSV", _nonexistent)
@@ -1957,23 +1954,20 @@ class TestReportModule:
         import src.report as rpt
         called_with: list[str] = []
 
-        def fake_load_beneish(cc: str) -> pd.DataFrame:
+        def fake_load_parquet(name: str, cc: str, sort_by=None) -> pd.DataFrame:
             called_with.append(cc)
             return pd.DataFrame()
 
-        monkeypatch.setattr(rpt, "_load_beneish", fake_load_beneish)
-        monkeypatch.setattr(rpt, "_load_company_name", lambda cc: cc)
-        monkeypatch.setattr(rpt, "_load_cb_bw", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_timing_anomalies", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(rpt, "_load_parquet", fake_load_parquet)
+        monkeypatch.setattr(rpt, "_load_company_name", lambda cc, beneish_df=None: cc)
+        monkeypatch.setattr(rpt, "_load_csv", lambda path, cc: pd.DataFrame())
         monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_officer_holdings", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_financials", lambda cc: pd.DataFrame())
         monkeypatch.setattr(rpt, "_CB_BW_CSV", pathlib.Path("/nonexistent/cb_bw.csv"))
         monkeypatch.setattr(rpt, "_TIMING_CSV", pathlib.Path("/nonexistent/timing.csv"))
         monkeypatch.setattr(rpt, "_NETWORK_CSV", pathlib.Path("/nonexistent/network.csv"))
         out = tmp_path / "padded_report.html"
         rpt.generate_report("1051092", output_path=out, skip_claude=True)
-        assert called_with, "Expected _load_beneish to be called"
+        assert called_with, "Expected _load_parquet to be called"
         assert called_with[0] == "01051092", f"Expected '01051092', got '{called_with[0]}'"
 
     def test_mscore_trend_chart_returns_figure(self, synthetic_beneish):

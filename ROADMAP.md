@@ -23,10 +23,9 @@
 | `revenue_schedule.parquet` | Revenue by customer/segment from 매출명세서 |
 | `bond_isin_map.parquet` | 1,859 validated bond ISINs / 656 corp_codes via FSC API (dataset 15043421); required by SEIBRO StockSvc extractor |
 
-## Codebase Cleanup — Completed (Session 34)
+## Codebase Cleanup — Completed (Sessions 34–35)
 
-22 issues addressed across 3 phases (bugs/security, performance, consolidation).
-168 tests pass. No behavior changes — all fixes are internal.
+**Session 34:** 22 issues across 3 phases (bugs/security, performance, consolidation).
 
 | Phase | Scope | Key changes |
 |---|---|---|
@@ -34,7 +33,15 @@
 | B (performance) | 5 items | Pre-grouped price lookups (~900M comparisons eliminated), lazy WICS probe, DataFrame concat, cached parquet reads, lazy plotly import |
 | C (consolidation) | 5 items | 4 duplicate functions → `_pipeline_helpers.py`, DART status constants, `src/constants.py`, `src/_paths.py`, removed 13 redundant `sys.path.insert` |
 
-See `CHANGELOG.md` session 34 entries and `KNOWN_ISSUES.md` KI-022 through KI-024 for full details.
+**Session 35:** 3 phases addressing remaining structural issues.
+
+| Phase | Scope | Key changes |
+|---|---|---|
+| D (constants adoption) | 3 files | 8 flag literals + 3 threshold literals → `src/constants.py` imports |
+| E (scoring extraction) | 3 files | ~150-line scoring logic deduplicated into `03_Analysis/_scoring.py`; fixed Marimo missing `flag_count` + conditional `peak_date` (KI-025) |
+| F (loader consolidation) | 2 files | 7 report loaders → 2 generic + 2 special; removed dead `_load_financials()`; fixed double beneish parquet read |
+
+168 tests pass. See `CHANGELOG.md` and `KNOWN_ISSUES.md` KI-022 through KI-025 for full details.
 
 ## What's Next
 

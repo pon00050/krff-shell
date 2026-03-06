@@ -11,6 +11,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.constants import BENEISH_THRESHOLD
+
 _RISK_TIER_COLORS = {
     "Low": "#2ecc71",
     "Medium": "#f1c40f",
@@ -47,10 +49,10 @@ def chart_distribution(df: pd.DataFrame) -> go.Figure:
         range_x=[-10, 5],
     )
     fig.add_vline(
-        x=-1.78,
+        x=BENEISH_THRESHOLD,
         line_dash="dash",
         line_color="black",
-        annotation_text="−1.78 threshold",
+        annotation_text=f"{BENEISH_THRESHOLD} threshold",
         annotation_position="top right",
     )
     fig.update_layout(barmode="stack")
@@ -116,7 +118,7 @@ def chart_year_trend(df: pd.DataFrame) -> go.Figure:
         y="Flag rate (%)",
         color="Series",
         markers=True,
-        title="Flagged Company Rate by Year (threshold −1.78)",
+        title=f"Flagged Company Rate by Year (threshold {BENEISH_THRESHOLD})",
         labels={"year": "Fiscal Year"},
     )
     fig.update_xaxes(tickvals=years, tickformat="d")

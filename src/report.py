@@ -49,38 +49,51 @@ __all__ = [
 
 # ─── Private data loaders ──────────────────────────────────────────────────────
 
-def _load_beneish(corp_code: str) -> pd.DataFrame:
-    p = _PROCESSED / "beneish_scores.parquet"
+def _load_parquet(name: str, corp_code: str, sort_by: str | None = None) -> pd.DataFrame:
+    """Load a parquet table from PROCESSED_DIR, filtered to one corp_code."""
+    p = _PROCESSED / name
     if not p.exists():
         return pd.DataFrame()
     try:
         df = pd.read_parquet(p)
+        if "corp_code" not in df.columns:
+            return pd.DataFrame()
         mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].sort_values("year").reset_index(drop=True)
+        result = df[mask]
+        if sort_by and sort_by in result.columns:
+            result = result.sort_values(sort_by)
+        return result.reset_index(drop=True)
     except FileNotFoundError:
         return pd.DataFrame()
     except Exception as exc:
-        log.warning("Error loading beneish_scores for %s: %s", corp_code, exc)
+        log.warning("Error loading %s for %s: %s", name, corp_code, exc)
         return pd.DataFrame()
 
 
-def _load_company_name(corp_code: str) -> str:
-    # Try beneish_scores first
-    p = _PROCESSED / "beneish_scores.parquet"
-    if p.exists():
-        try:
-            df = pd.read_parquet(p, columns=["corp_code", "company_name"])
-            mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-            rows = df[mask]
-            if not rows.empty and "company_name" in rows.columns:
-                val = rows["company_name"].iloc[0]
-                if pd.notna(val) and str(val).strip():
-                    return str(val).strip()
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            log.warning("Error loading company name from beneish for %s: %s", corp_code, exc)
-    # Try corp_ticker_map
+def _load_csv(path: Path, corp_code: str) -> pd.DataFrame:
+    """Load a CSV analysis output, filtered to one corp_code."""
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(path, encoding="utf-8-sig")
+        if "corp_code" not in df.columns:
+            return pd.DataFrame()
+        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
+        return df[mask].reset_index(drop=True)
+    except FileNotFoundError:
+        return pd.DataFrame()
+    except Exception as exc:
+        log.warning("Error loading %s for %s: %s", path.name, corp_code, exc)
+        return pd.DataFrame()
+
+
+def _load_company_name(corp_code: str, beneish_df: pd.DataFrame | None = None) -> str:
+    """Extract company name from pre-loaded beneish data or corp_ticker_map."""
+    if beneish_df is not None and not beneish_df.empty and "company_name" in beneish_df.columns:
+        val = beneish_df["company_name"].iloc[0]
+        if pd.notna(val) and str(val).strip():
+            return str(val).strip()
+    # Fallback to corp_ticker_map
     p2 = _PROCESSED / "corp_ticker_map.parquet"
     if p2.exists():
         try:
@@ -100,46 +113,14 @@ def _load_company_name(corp_code: str) -> str:
     return corp_code
 
 
-def _load_cb_bw(corp_code: str) -> pd.DataFrame:
-    if not _CB_BW_CSV.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(_CB_BW_CSV, encoding="utf-8-sig")
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading cb_bw_summary for %s: %s", corp_code, exc)
-        return pd.DataFrame()
-
-
-def _load_timing_anomalies(corp_code: str) -> pd.DataFrame:
-    if not _TIMING_CSV.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(_TIMING_CSV, encoding="utf-8-sig")
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading timing_anomalies for %s: %s", corp_code, exc)
-        return pd.DataFrame()
-
-
 def _load_officer_network(corp_code: str) -> pd.DataFrame:
+    """Load officer network CSV with token-match filtering on 'companies' column."""
     if not _NETWORK_CSV.exists():
         return pd.DataFrame()
     try:
         df = pd.read_csv(_NETWORK_CSV, encoding="utf-8-sig")
         if "companies" not in df.columns:
             return pd.DataFrame()
-        # Exact token match — avoid substring collision with similar corp codes
         mask = df["companies"].apply(
             lambda val: corp_code in [c.strip() for c in str(val).split(",")]
             if pd.notna(val) else False
@@ -149,40 +130,6 @@ def _load_officer_network(corp_code: str) -> pd.DataFrame:
         return pd.DataFrame()
     except Exception as exc:
         log.warning("Error loading officer_network for %s: %s", corp_code, exc)
-        return pd.DataFrame()
-
-
-def _load_officer_holdings(corp_code: str) -> pd.DataFrame:
-    p = _PROCESSED / "officer_holdings.parquet"
-    if not p.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_parquet(p)
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading officer_holdings for %s: %s", corp_code, exc)
-        return pd.DataFrame()
-
-
-def _load_financials(corp_code: str) -> pd.DataFrame:
-    p = _PROCESSED / "company_financials.parquet"
-    if not p.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_parquet(p)
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].sort_values("year").reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading company_financials for %s: %s", corp_code, exc)
         return pd.DataFrame()
 
 
@@ -885,18 +832,18 @@ def generate_report(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load data (file existence tracked before calling loaders)
-    beneish_df   = _load_beneish(corp_code)
-    company_name = _load_company_name(corp_code)
+    beneish_df   = _load_parquet("beneish_scores.parquet", corp_code, sort_by="year")
+    company_name = _load_company_name(corp_code, beneish_df)
 
     cb_bw_csv_exists = _CB_BW_CSV.exists()
-    cb_bw_df         = _load_cb_bw(corp_code)
+    cb_bw_df         = _load_csv(_CB_BW_CSV, corp_code)
 
     timing_csv_exists = _TIMING_CSV.exists()
-    timing_df         = _load_timing_anomalies(corp_code)
+    timing_df         = _load_csv(_TIMING_CSV, corp_code)
 
     network_csv_exists = _NETWORK_CSV.exists()
     network_df         = _load_officer_network(corp_code)
-    holdings_df        = _load_officer_holdings(corp_code)
+    holdings_df        = _load_parquet("officer_holdings.parquet", corp_code)
 
     # Get ticker from beneish data
     ticker = ""
