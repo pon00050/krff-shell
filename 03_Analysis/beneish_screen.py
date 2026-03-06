@@ -79,7 +79,9 @@ def _load_data(mo, os, pd, Path):
                 f"SELECT * FROM 's3://{bucket}/processed/company_financials.parquet'"
             ).df()
 
-        local = Path("01_Data/processed/company_financials.parquet")
+        local = Path(
+            os.getenv("FINANCIALS_PATH", "01_Data/processed/company_financials.parquet")
+        )
         if not local.exists():
             return None
         return pd.read_parquet(local)

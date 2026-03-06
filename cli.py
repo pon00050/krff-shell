@@ -133,6 +133,16 @@ def status(
 
 
 @app.command()
+def quality(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-column null breakdown"),
+) -> None:
+    """Show data quality metrics: null rates, coverage gaps, and stat test output status."""
+    from src.quality import get_quality, format_quality
+
+    typer.echo(format_quality(get_quality(), verbose=verbose))
+
+
+@app.command()
 def version() -> None:
     """Print kr-forensic-finance version."""
     typer.echo(f"kr-forensic-finance v{_VERSION}")

@@ -2134,3 +2134,52 @@ class TestDepreciationScheduleSchema:
                 assert pd.api.types.is_float_dtype(depr_schedule[col]), (
                     f"{col} must be float dtype, got {depr_schedule[col].dtype}"
                 )
+
+
+# ─── Category 21: Quality module ─────────────────────────────────────────────
+
+class TestQualityModule:
+    """Tests for src/quality.py — get_quality() and format_quality()."""
+
+    def test_get_quality_returns_expected_keys(self, tmp_path):
+        """get_quality() must return a dict with the four top-level keys."""
+        from src.quality import get_quality
+
+        # Use tmp_path as both dirs so no real files needed
+        result = get_quality(processed_dir=tmp_path, stat_outputs_dir=tmp_path)
+        assert set(result.keys()) == {"tables", "coverage", "stat_outputs", "summary"}
+        assert isinstance(result["tables"], list)
+        assert isinstance(result["coverage"], dict)
+        assert isinstance(result["stat_outputs"], list)
+        assert isinstance(result["summary"], dict)
+        assert "tables_with_issues" in result["summary"]
+        assert "missing_outputs" in result["summary"]
+        assert "blocked_outputs" in result["summary"]
+
+    def test_format_quality_contains_section_headers(self, tmp_path):
+        """format_quality() output must contain the three section headers."""
+        from src.quality import get_quality, format_quality
+
+        result = get_quality(processed_dir=tmp_path, stat_outputs_dir=tmp_path)
+        output = format_quality(result, verbose=False)
+        assert "Data Quality Report" in output
+        assert "Coverage" in output
+        assert "Stat Test Outputs" in output
+
+    def test_format_quality_verbose_includes_col_detail(self, tmp_path):
+        """format_quality(verbose=True) must include per-column null detail for tables with nulls."""
+        import pandas as pd
+        from src.quality import get_quality, format_quality
+
+        # Create a minimal parquet with a null column so verbose output has something to show
+        df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", "z"]})
+        df.to_parquet(tmp_path / "test_table.parquet", index=False)
+
+        result = get_quality(processed_dir=tmp_path, stat_outputs_dir=tmp_path)
+        output_verbose = format_quality(result, verbose=True)
+        output_normal = format_quality(result, verbose=False)
+
+        # Verbose output should contain column-level null info
+        assert "a:" in output_verbose
+        # Normal output should not contain the indented column detail
+        assert "    a:" not in output_normal
