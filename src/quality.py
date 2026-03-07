@@ -15,6 +15,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 from src._paths import PROJECT_ROOT as _PROJECT_ROOT, PROCESSED_DIR as _PROCESSED
+from src.db import to_duckdb_path as _dpath
 
 _STAT_OUTPUTS = _PROJECT_ROOT / "03_Analysis" / "statistical_tests" / "outputs"
 
@@ -62,83 +63,86 @@ def get_quality(
     stat_out = stat_outputs_dir or _STAT_OUTPUTS
 
     # --- Tables ---
+    # Single DuckDB connection for the entire scan — one connection open/close
+    # instead of one per table, reducing overhead from O(N tables) to O(1).
+    import duckdb
     tables = []
-    for path in sorted(proc.glob("*.parquet")):
-        name = path.name
-        path_str = str(path).replace("\\", "/")
+    con = duckdb.connect()
+    try:
+        for path in sorted(proc.glob("*.parquet")):
+            name = path.name
+            path_str = _dpath(path)
 
-        # Schema introspection via DuckDB
-        import duckdb
-        con = duckdb.connect()
-        try:
-            schema_df = con.execute(
-                "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_parquet(?))",
-                [path_str],
-            ).fetchdf()
-            all_cols = list(schema_df["column_name"])
-            col_types = dict(zip(schema_df["column_name"], schema_df["column_type"]))
-            cols_ = len(all_cols)
+            # Per-table try/except so one bad file doesn't abort the whole scan.
+            try:
+                schema_df = con.execute(
+                    "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_parquet(?))",
+                    [path_str],
+                ).fetchdf()
+                all_cols = list(schema_df["column_name"])
+                col_types = dict(zip(schema_df["column_name"], schema_df["column_type"]))
+                cols_ = len(all_cols)
 
-            # Row count + null counts via aggregate query
-            null_exprs = ", ".join(
-                f"COUNT(*) - COUNT(\"{c}\") AS \"{c}_nulls\"" for c in all_cols
-            )
-            agg_sql = f"SELECT COUNT(*) AS total_rows, {null_exprs} FROM read_parquet(?)"
-            agg_row = con.execute(agg_sql, [path_str]).fetchdf().iloc[0]
-            rows = int(agg_row["total_rows"])
-
-            col_nulls = {}
-            null_count = 0
-            for c in all_cols:
-                n = int(agg_row[f"{c}_nulls"])
-                if n > 0:
-                    col_nulls[c] = (n, n / rows * 100)
-                null_count += n
-            null_pct = null_count / max(rows * cols_, 1) * 100
-
-            # Inf detection for float/double columns
-            float_cols = [
-                c for c, t in col_types.items()
-                if t.upper() in ("FLOAT", "DOUBLE", "REAL")
-            ]
-            inf_count = 0
-            if float_cols:
-                inf_exprs = " + ".join(
-                    f"COUNT(*) FILTER (WHERE isinf(\"{c}\"))" for c in float_cols
+                # Row count + null counts via aggregate query
+                null_exprs = ", ".join(
+                    f"COUNT(*) - COUNT(\"{c}\") AS \"{c}_nulls\"" for c in all_cols
                 )
-                inf_sql = f"SELECT {inf_exprs} AS inf_total FROM read_parquet(?)"
-                inf_row = con.execute(inf_sql, [path_str]).fetchdf()
-                inf_count = int(inf_row.iloc[0, 0])
-        except Exception as exc:
-            log.warning("DuckDB quality scan failed for %s: %s", name, exc)
-            rows, cols_, null_count, null_pct, inf_count, col_nulls = 0, 0, 0, 0.0, 0, {}
-        finally:
-            con.close()
+                agg_sql = f"SELECT COUNT(*) AS total_rows, {null_exprs} FROM read_parquet(?)"
+                agg_row = con.execute(agg_sql, [path_str]).fetchdf().iloc[0]
+                rows = int(agg_row["total_rows"])
 
-        # Build issues string from known patterns
-        issues_parts: list[str] = []
-        for col, label in _NULL_ISSUE_COLS.get(name, []):
-            if col in col_nulls:
-                col_null_pct = col_nulls[col][1]
-                if col_null_pct > 5:
-                    issues_parts.append(f"{label} ({col_null_pct:.0f}%)")
-        if inf_count > 0:
-            issues_parts.append(f"{inf_count} infs")
-        issues = "; ".join(issues_parts)
+                col_nulls = {}
+                null_count = 0
+                for c in all_cols:
+                    n = int(agg_row[f"{c}_nulls"])
+                    if n > 0:
+                        col_nulls[c] = (n, n / rows * 100)
+                    null_count += n
+                null_pct = null_count / max(rows * cols_, 1) * 100
 
-        tables.append({
-            "name": name,
-            "rows": rows,
-            "cols": cols_,
-            "null_count": null_count,
-            "null_pct": null_pct,
-            "inf_count": inf_count,
-            "issues": issues,
-            "col_nulls": col_nulls,
-            "modified": datetime.fromtimestamp(
-                path.stat().st_mtime, tz=timezone.utc
-            ).strftime("%Y-%m-%d"),
-        })
+                # Inf detection for float/double columns
+                float_cols = [
+                    c for c, t in col_types.items()
+                    if t.upper() in ("FLOAT", "DOUBLE", "REAL")
+                ]
+                inf_count = 0
+                if float_cols:
+                    inf_exprs = " + ".join(
+                        f"COUNT(*) FILTER (WHERE isinf(\"{c}\"))" for c in float_cols
+                    )
+                    inf_sql = f"SELECT {inf_exprs} AS inf_total FROM read_parquet(?)"
+                    inf_row = con.execute(inf_sql, [path_str]).fetchdf()
+                    inf_count = int(inf_row.iloc[0, 0])
+            except Exception as exc:
+                log.warning("DuckDB quality scan failed for %s: %s", name, exc)
+                rows, cols_, null_count, null_pct, inf_count, col_nulls = 0, 0, 0, 0.0, 0, {}
+
+            # Build issues string from known patterns
+            issues_parts: list[str] = []
+            for col, label in _NULL_ISSUE_COLS.get(name, []):
+                if col in col_nulls:
+                    col_null_pct = col_nulls[col][1]
+                    if col_null_pct > 5:
+                        issues_parts.append(f"{label} ({col_null_pct:.0f}%)")
+            if inf_count > 0:
+                issues_parts.append(f"{inf_count} infs")
+            issues = "; ".join(issues_parts)
+
+            tables.append({
+                "name": name,
+                "rows": rows,
+                "cols": cols_,
+                "null_count": null_count,
+                "null_pct": null_pct,
+                "inf_count": inf_count,
+                "issues": issues,
+                "col_nulls": col_nulls,
+                "modified": datetime.fromtimestamp(
+                    path.stat().st_mtime, tz=timezone.utc
+                ).strftime("%Y-%m-%d"),
+            })
+    finally:
+        con.close()
 
     # --- Coverage (DuckDB aggregate queries — no full DataFrame loads) ---
     from src.db import query as _db_query
@@ -150,8 +154,8 @@ def get_quality(
     bim_path = proc / "bond_isin_map.parquet"
     try:
         if bim_path.exists() and cbe_path.exists():
-            bim_str = str(bim_path).replace("\\", "/")
-            cbe_str = str(cbe_path).replace("\\", "/")
+            bim_str = _dpath(bim_path)
+            cbe_str = _dpath(cbe_path)
             bim_df = _db_query("SELECT COUNT(DISTINCT corp_code) AS n FROM read_parquet(?)", [bim_str])
             cbe_df = _db_query("SELECT COUNT(DISTINCT corp_code) AS n FROM read_parquet(?)", [cbe_str])
             bim_n = int(bim_df.iloc[0, 0])
@@ -165,11 +169,11 @@ def get_quality(
     disc_path = proc / "disclosures.parquet"
     try:
         if disc_path.exists():
-            disc_str = str(disc_path).replace("\\", "/")
+            disc_str = _dpath(disc_path)
             disc_df = _db_query("SELECT COUNT(DISTINCT corp_code) AS n FROM read_parquet(?)", [disc_str])
             disc_n = int(disc_df.iloc[0, 0])
             if cbe_n is None and cbe_path.exists():
-                cbe_str = str(cbe_path).replace("\\", "/")
+                cbe_str = _dpath(cbe_path)
                 cbe_df = _db_query("SELECT COUNT(DISTINCT corp_code) AS n FROM read_parquet(?)", [cbe_str])
                 cbe_n = int(cbe_df.iloc[0, 0])
             cbe_n = cbe_n or 0
@@ -183,8 +187,8 @@ def get_quality(
     ctm_path = proc / "corp_ticker_map.parquet"
     try:
         if pv_path.exists() and ctm_path.exists():
-            pv_str = str(pv_path).replace("\\", "/")
-            ctm_str = str(ctm_path).replace("\\", "/")
+            pv_str = _dpath(pv_path)
+            ctm_str = _dpath(ctm_path)
             # Use DuckDB to compute ticker intersection count
             intersect_sql = (
                 "SELECT COUNT(*) AS n FROM ("

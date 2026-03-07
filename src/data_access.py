@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from src._paths import PROJECT_ROOT, PROCESSED_DIR
-from src.db import read_table, query, parquet_path
+from src.db import read_table, query, parquet_path, to_duckdb_path
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def load_company_name(
     proc = processed_dir or PROCESSED_DIR
     path = parquet_path("corp_ticker_map", proc)
     if path.exists():
-        path_str = str(path).replace("\\", "/")
+        path_str = to_duckdb_path(path)
         for col in ("company_name", "corp_name", "name"):
             sql = (
                 f"SELECT {col} FROM read_parquet(?) "

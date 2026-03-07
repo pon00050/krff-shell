@@ -2469,3 +2469,37 @@ class TestDuckDBQueryContracts:
             processed_dir=tmp_path,
         )
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Category 29 — DuckDB path helper (to_duckdb_path)
+# ---------------------------------------------------------------------------
+
+class TestDuckDBPathHelper:
+    """Guard tests for the centralised Windows path normalisation helper.
+
+    These tests are written before the implementation (test-first mandate).
+    They must fail with ImportError until to_duckdb_path is added to src.db.
+    """
+
+    def test_normalizes_backslashes(self):
+        """Windows-style backslash paths are converted to forward slashes."""
+        from src.db import to_duckdb_path
+        result = to_duckdb_path("C:\\Users\\foo\\bar.parquet")
+        assert "\\" not in result
+        assert result == "C:/Users/foo/bar.parquet"
+
+    def test_forward_slashes_unchanged(self):
+        """Paths that already use forward slashes pass through unmodified."""
+        from src.db import to_duckdb_path
+        original = "C:/Users/foo/bar.parquet"
+        assert to_duckdb_path(original) == original
+
+    def test_accepts_path_object(self):
+        """pathlib.Path objects are accepted and returned as forward-slash strings."""
+        from pathlib import Path
+        from src.db import to_duckdb_path
+        p = Path("C:/Users/foo/bar.parquet")
+        result = to_duckdb_path(p)
+        assert isinstance(result, str)
+        assert "\\" not in result

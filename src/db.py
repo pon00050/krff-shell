@@ -45,6 +45,15 @@ _SORT_WHITELIST = {
 }
 
 
+def to_duckdb_path(p: Path | str) -> str:
+    """Convert a path to a forward-slash string safe for DuckDB read_parquet().
+
+    DuckDB's parquet reader requires forward slashes on all platforms.
+    Call this once at the boundary where a Path becomes a SQL parameter.
+    """
+    return str(p).replace("\\", "/")
+
+
 def parquet_path(name: str, processed_dir: Path | None = None) -> Path:
     """Resolve a logical table name or filename to an absolute path."""
     proc = processed_dir or PROCESSED_DIR
@@ -107,7 +116,7 @@ def read_table(
     if not path.exists():
         return pd.DataFrame()
 
-    path_str = str(path).replace("\\", "/")
+    path_str = to_duckdb_path(path)
 
     # Build SELECT clause
     select_clause = ", ".join(columns) if columns else "*"
@@ -139,6 +148,7 @@ def read_table(
 
 __all__ = [
     "PARQUET_TABLES",
+    "to_duckdb_path",
     "parquet_path",
     "get_connection",
     "query",
