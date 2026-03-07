@@ -143,6 +143,70 @@ def quality(
 
 
 @app.command()
+def refresh(
+    sample: Optional[int] = typer.Option(None, help="Limit to N companies for each stage (smoke test: --sample 1)"),
+    skip_analysis: bool = typer.Option(False, "--skip-analysis", help="Skip Phase 2 runner scripts (cb_bw, timing, network)"),
+) -> None:
+    """Re-run the full data pipeline and analysis in sequence.
+
+    Stages (in order):
+      1. DART extraction (financials, CB/BW, officer holdings, disclosures)
+      2. Transform (beneish_scores.parquet, imputation)
+      3. beneish_screen.py
+      4. run_cb_bw_timelines.py
+      5. run_timing_anomalies.py
+      6. run_officer_network.py
+
+    Use --sample 1 to smoke-test all stages with minimal API calls.
+
+    Note: beneish_screen.py and Phase 2 runners are both skipped when --sample is active.
+    --sample is for API quota smoke-testing only; production scoring requires full output.
+    """
+    import subprocess
+
+    root = Path(__file__).parent
+    analysis = root / "03_Analysis"
+
+    def _run_script(label: str, script: Path) -> None:
+        typer.echo(f"\n--- {label} ---")
+        result = subprocess.run([sys.executable, str(script)], cwd=str(root))
+        if result.returncode != 0:
+            typer.echo(f"ERROR: {label} exited with code {result.returncode}", err=True)
+            raise typer.Exit(code=result.returncode)
+
+    from src.pipeline import run_pipeline
+
+    # Stage 1 — DART extraction
+    typer.echo("\n--- Stage 1: DART extraction ---")
+    run_pipeline(stage="dart", sample=sample)
+
+    # Stage 2 — Transform
+    typer.echo("\n--- Stage 2: Transform ---")
+    run_pipeline(stage="transform", sample=sample)
+
+    # Stage 3 — Beneish screen (skipped when --sample active: sample runs test API quota only)
+    if sample is not None:
+        typer.echo(
+            "\n--- Stage 3: beneish_screen.py (skipped — --sample active; "
+            "scoring requires full transform output) ---"
+        )
+    else:
+        _run_script("Stage 3: beneish_screen.py", analysis / "beneish_screen.py")
+
+    if not skip_analysis:
+        # Stage 4 — CB/BW timelines
+        _run_script("Stage 4: run_cb_bw_timelines.py", analysis / "run_cb_bw_timelines.py")
+
+        # Stage 5 — Timing anomalies
+        _run_script("Stage 5: run_timing_anomalies.py", analysis / "run_timing_anomalies.py")
+
+        # Stage 6 — Officer network
+        _run_script("Stage 6: run_officer_network.py", analysis / "run_officer_network.py")
+
+    typer.echo("\nRefresh complete.")
+
+
+@app.command()
 def version() -> None:
     """Print kr-forensic-finance version."""
     typer.echo(f"kr-forensic-finance v{_VERSION}")

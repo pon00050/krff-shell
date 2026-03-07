@@ -337,6 +337,16 @@ def _write_parquet(df_scored, os, pd, Path):
     df_out = df_scored[output_cols].copy()
 
     parquet_path = _processed / "beneish_scores.parquet"
+
+    if len(df_out) == 0:
+        import logging
+        logging.warning(
+            "beneish_screen: company_financials.parquet has 0 scoreable rows — "
+            "skipping beneish_scores.parquet write to prevent data loss. "
+            "Re-run without --sample or ensure sampled company is non-financial sector."
+        )
+        return parquet_path, df_out
+
     df_out.to_parquet(parquet_path, index=False, engine="pyarrow")
 
     # Upload to R2 if credentials are configured

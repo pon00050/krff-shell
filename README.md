@@ -154,9 +154,9 @@ kr-forensic-finance/
 │   ├── beneish_viz.py             Visual summary → beneish_viz.html
 │   ├── beneish_viz.html           Generated output — open in any browser
 │   ├── phase1_research_questions.py  Open analytical threads from Phase 1
-│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (Marimo; use run_cb_bw_timelines.py)
-│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (Marimo; use run_timing_anomalies.py)
-│   ├── officer_network.py         Milestone 4 — Officer graph (Marimo; use run_officer_network.py)
+│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (Marimo app; run via run_cb_bw_timelines.py — Marimo UI optional)
+│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (Marimo app; run via run_timing_anomalies.py — Marimo UI optional)
+│   ├── officer_network.py         Milestone 4 — Officer graph (Marimo app; run via run_officer_network.py — Marimo UI optional)
 │   ├── run_cb_bw_timelines.py     Standalone runner → cb_bw_summary.csv
 │   ├── run_timing_anomalies.py    Standalone runner → timing_anomalies.csv
 │   ├── run_officer_network.py     Standalone runner → centrality_report.csv
@@ -215,8 +215,8 @@ All three support `--force`, `--sample N`, `--sleep S`, `--max-minutes M`. HTML 
 ### Testing
 
 ```bash
-pytest tests/test_pipeline_invariants.py -v   # No pipeline data needed
-pytest tests/test_acceptance_criteria.py -v   # After full pipeline + beneish_screen.py
+pytest tests/ -v                              # Full suite (168 tests)
+pytest tests/test_pipeline_invariants.py tests/test_e2e_synthetic.py -v  # No pipeline data needed
 ```
 
 Test documentation is maintained locally in `00_Reference/`.

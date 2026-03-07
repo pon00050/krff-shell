@@ -71,6 +71,23 @@
 
 ## Statistical Analysis — Remaining Action Items
 
+### Completed (Session 38)
+
+| ID | Description | Outcome |
+|----|-------------|---------|
+| — | Session 39: label expansion + blind spot docs | 아스트 (FSC 22억 fines) + 휴림로봇 (검찰 기소) fraud=1; labels 28→30 (17 fraud=1); bootstrap −1.85 (CI [−2.85, −0.90]); RF AUC 0.738±0.201; FINDINGS.md §10 blind spots detailed; KI-026 (refresh --sample destructive) |
+| — | krff reports for 8 high-priority secondaries | Generated 8 HTML reports (캔버스엔, 스피어, 알티캐스트, 아스트, 라닉스, 휴림로봇, 엑시온그룹, 유일에너테크); all dual-flagged (holdings_decrease + volume_surge); SEIBRO still resultCode=99 (day 4) |
+| — | Label coverage analysis | `label_coverage_analysis.py` written; 13/14 Beneish (93%); 10/14 CB/BW (71%); 6/14 dual (43%); 에코앤드림 Beneish blind spot; §10 in FINDINGS.md |
+| — | Label expansion — 알티캐스트 | Web search confirmed CEO 서정규 배임 기소 2023-12-19 (특경법); added as fraud=1; labels 27→28 (15 fraud=1); bootstrap −1.75 stable; RF AUC 0.740; TATA −0.101 |
+| A1 | Automate recurring data refresh | `krff refresh` command added to `cli.py`; 6-stage wrapper; `--sample` + `--skip-analysis` flags; 168 tests pass |
+
+### Completed (Session 36)
+
+| ID | Description | Outcome |
+|----|-------------|---------|
+| S13 | Expand `labels.csv` with confirmed Korean fraud cases | 15→27 labels; 4 new fraud=1 (초록뱀그룹 CB배임 cases + 셀리버리); 8 new fraud=0. Bootstrap threshold: −0.75→−1.75 (near US −1.78). RF AUC: 0.670→0.786 ± 0.182. TATA negative coefficient confirmed as stable KOSDAQ pattern. FINDINGS.md §9 added. |
+| S14 | Pipeline validation against confirmed fraud companies | All 4 confirmed fraud companies caught by M-score (≥1 year above −1.78). 초록뱀그룹: flag_count=1 (volume_surge). 셀리버리: flag_count=0 (disclosure fraud, not CB abuse). Cross-Script Synthesis updated. SEIBRO still resultCode=99. |
+
 ### Ready now (no external dependencies)
 
 *(none — all non-blocked items complete)*
@@ -101,10 +118,22 @@
 |---|---|---|
 | S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation only (ISIN map blocker resolved — see S6a above) |
 
+## Phase 3 — Continuous Monitoring
+
+| ID | Description | Status |
+|----|-------------|--------|
+| M1 | Event-driven re-scoring on new regulatory filings | Planned |
+| M2 | Market surveillance signal integration | Planned |
+| M3 | Regulatory enforcement feed and automated evidence staging | Planned |
+
+Phase 3 extends the pipeline from periodic batch processing to continuous monitoring.
+Detection runs incrementally as new data arrives rather than on a fixed schedule,
+reducing time-to-signal from weeks to hours. Full specification in internal documentation.
+
 ## Open Backlog
 
 | ID | Description | Phase | Effort |
 |---|---|---|---|
 | PR5 | Historical backfill 2014–2018 | 4 | Medium |
-| A1 | Automate recurring data refresh | 2 | Low |
+| ~~A1~~ | ~~Automate recurring data refresh~~ — **Complete (Session 38):** `krff refresh` command added to `cli.py`; runs 6 stages in sequence (DART → transform → beneish_screen → cb_bw → timing → network); `--sample N` and `--skip-analysis` flags | 2 | Low |
 | I1 | Verify PyKRX from hosted IPs | 5 | Low |

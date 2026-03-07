@@ -20,7 +20,7 @@ Run `git status` first. If working tree is clean and branch is up to date, repor
 
 If there are changes:
 
-4. Run `python -m pytest tests/test_pipeline_invariants.py -v` and confirm all tests pass
+4. Run `python -m pytest tests/ -v` and confirm all tests pass
 5. Verify no private files are staged (check against Privacy Rule in CLAUDE.md)
 6. Stage specific files by name (never `git add -A` or `git add .`)
 7. Commit with a descriptive message

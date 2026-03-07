@@ -12,5 +12,5 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --extra dev
-      - run: uv run pytest tests/test_pipeline_invariants.py tests/test_e2e_synthetic.py -v
+      - run: uv run pytest tests/ -v
         timeout-minutes: 5

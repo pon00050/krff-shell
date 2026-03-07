@@ -574,7 +574,7 @@ def build_company_financials(
     ]
     for col in float_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
 
     df["year"] = df["year"].astype(int)
     df = df.reset_index(drop=True)
@@ -586,7 +586,8 @@ def build_company_financials(
 
 def _empty_company_financials() -> pd.DataFrame:
     """Return an empty DataFrame with the correct 34-column schema."""
-    return pd.DataFrame(columns=[
+    import numpy as np
+    df = pd.DataFrame(columns=[
         "corp_code", "ticker", "company_name", "market", "year", "extraction_date",
         "fs_type", "fs_type_shift", "dart_api_source", "expense_method",
         "receivables", "revenue", "cogs", "sga", "ppe",
@@ -597,6 +598,10 @@ def _empty_company_financials() -> pd.DataFrame:
         "match_method_depreciation", "match_method_total_assets",
         "match_method_lt_debt", "match_method_net_income", "match_method_cfo",
     ])
+    for col in ["receivables", "revenue", "cogs", "sga", "ppe",
+                "depreciation", "total_assets", "lt_debt", "net_income", "cfo"]:
+        df[col] = df[col].astype(np.float64)
+    return df
 
 
 def _write_parquet(df: pd.DataFrame, name: str) -> Path:

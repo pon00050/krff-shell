@@ -119,7 +119,10 @@ class TestSchemaContracts:
         p = PROCESSED / "company_financials.parquet"
         if not p.exists():
             pytest.skip("company_financials.parquet not found — run the pipeline first")
-        return pd.read_parquet(p)
+        df = pd.read_parquet(p)
+        if df.empty:
+            pytest.skip("company_financials.parquet has 0 rows — run the pipeline first")
+        return df
 
     REQUIRED_COLUMNS = [
         "corp_code", "ticker", "company_name", "market", "year",
@@ -934,7 +937,10 @@ class TestMatchMethodLineage:
         p = PROCESSED / "company_financials.parquet"
         if not p.exists():
             pytest.skip("company_financials.parquet not found — run the pipeline first")
-        return pd.read_parquet(p)
+        df = pd.read_parquet(p)
+        if df.empty:
+            pytest.skip("company_financials.parquet has 0 rows — run the pipeline first")
+        return df
 
     def test_match_method_columns_exist(self, financials):
         missing = [c for c in self.MATCH_METHOD_COLS if c not in financials.columns]
@@ -1246,7 +1252,10 @@ class TestDataQualityAnomalies:
         p = PROCESSED / "company_financials.parquet"
         if not p.exists():
             pytest.skip("company_financials.parquet not found — run the pipeline first")
-        return pd.read_parquet(p)
+        df = pd.read_parquet(p)
+        if df.empty:
+            pytest.skip("company_financials.parquet has 0 rows — run the pipeline first")
+        return df
 
     def test_no_revenue_sandwich_spikes(self, financials: pd.DataFrame) -> None:
         """
