@@ -16,8 +16,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
+
+from _scoring import score_disclosures
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED = ROOT / "01_Data" / "processed"
@@ -79,68 +80,6 @@ def prepare_price(df_pv: pd.DataFrame) -> pd.DataFrame:
     else:
         df["volume_ratio"] = float("nan")
     return df
-
-
-def score_disclosures(
-    df_disc_clean: pd.DataFrame,
-    df_pv_clean: pd.DataFrame,
-    df_map: pd.DataFrame,
-) -> pd.DataFrame:
-    if not df_map.empty and "corp_code" in df_map.columns:
-        map_lookup = df_map.drop_duplicates("corp_code").set_index("corp_code")["ticker"].to_dict()
-    else:
-        map_lookup = {}
-
-    pv_idx = df_pv_clean.set_index(["ticker", "date"])
-
-    results = []
-    for _, disc in df_disc_clean.iterrows():
-        corp_code = disc["corp_code"]
-        ticker = map_lookup.get(corp_code)
-        if not ticker:
-            continue
-
-        t_date = disc["trading_date"]
-        gap_hours = disc["gap_hours"]
-
-        for offset_days, label in [(0, "same_day"), (-1, "prior_day")]:
-            check_date = t_date + pd.Timedelta(days=offset_days)
-            key = (ticker, check_date)
-            if key not in pv_idx.index:
-                continue
-
-            row_pv = pv_idx.loc[key]
-            price_chg = float(row_pv.get("price_change_pct", np.nan))
-            vol_ratio = float(row_pv.get("volume_ratio", np.nan))
-
-            if np.isnan(price_chg) or np.isnan(vol_ratio):
-                continue
-
-            anomaly_score = abs(price_chg) * vol_ratio * gap_hours
-            flag = abs(price_chg) >= 5.0 and vol_ratio >= 2.0
-
-            if flag or abs(price_chg) >= 3.0:
-                results.append({
-                    "corp_code": corp_code,
-                    "ticker": ticker,
-                    "filing_date": str(t_date.date()),
-                    "check_date": str(check_date.date()),
-                    "timing": label,
-                    "disclosure_type": disc.get("type"),
-                    "title": disc.get("title"),
-                    "price_change_pct": round(price_chg, 2),
-                    "volume_ratio": round(vol_ratio, 2),
-                    "gap_hours": round(gap_hours, 1),
-                    "anomaly_score": round(anomaly_score, 2),
-                    "flag": flag,
-                    "is_material": disc.get("is_material", False),
-                    "dart_link": disc.get("dart_link"),
-                })
-
-    df_results = pd.DataFrame(results)
-    if not df_results.empty:
-        df_results = df_results.sort_values("anomaly_score", ascending=False)
-    return df_results
 
 
 def main() -> None:

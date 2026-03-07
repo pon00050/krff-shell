@@ -19,6 +19,14 @@ from src.constants import (
     FLAG_EXERCISE_AT_PEAK,
     FLAG_VOLUME_SURGE,
     FLAG_HOLDINGS_DECREASE,
+    REPRICING_DISCOUNT_RATIO,
+    EXERCISE_PEAK_WINDOW_DAYS,
+    VOLUME_SURGE_RATIO,
+    HOLDINGS_DECREASE_RATIO,
+    PRICE_WINDOW_DAYS,
+    TIMING_PRICE_CHANGE_PCT,
+    TIMING_VOLUME_RATIO,
+    TIMING_BORDERLINE_PRICE_PCT,
 )
 
 log = logging.getLogger(__name__)
@@ -95,8 +103,8 @@ def score_events(
             continue
         issue_idx = df_ticker["date"].searchsorted(issue_date)
 
-        window_start = max(0, issue_idx - 60)
-        window_end = min(len(df_ticker), issue_idx + 61)
+        window_start = max(0, issue_idx - PRICE_WINDOW_DAYS)
+        window_end = min(len(df_ticker), issue_idx + PRICE_WINDOW_DAYS + 1)
         df_window = df_ticker.iloc[window_start:window_end].copy()
         df_pre = df_ticker.iloc[max(0, window_start - 30):window_start].copy()
 
@@ -122,7 +130,7 @@ def score_events(
             if not pd.isna(rp_date):
                 candidates = df_ticker[df_ticker["date"] <= rp_date]["close"]
                 market_price_at_rp = candidates.iloc[-1] if not candidates.empty else None
-                if market_price_at_rp and float(rp_price) < market_price_at_rp * 0.95:
+                if market_price_at_rp and float(rp_price) < market_price_at_rp * REPRICING_DISCOUNT_RATIO:
                     repricing_flag = True
         if repricing_flag:
             flags.append(FLAG_REPRICING_BELOW_MARKET)
@@ -145,7 +153,7 @@ def score_events(
                     continue
                 if peak_date is not None:
                     ex_date = pd.to_datetime(str(ex_date_raw)[:8], errors="coerce")
-                    if not pd.isna(ex_date) and abs((ex_date - peak_date).days) <= 5:
+                    if not pd.isna(ex_date) and abs((ex_date - peak_date).days) <= EXERCISE_PEAK_WINDOW_DAYS:
                         exercise_cluster_flag = True
         # Always store peak_date — computed from price data regardless of exercise events
         if peak_date is not None:
@@ -163,7 +171,7 @@ def score_events(
             event_vol = df_window[vol_col].mean()
             if baseline_vol and baseline_vol > 0:
                 volume_ratio = event_vol / baseline_vol
-                if volume_ratio > 3.0:
+                if volume_ratio > VOLUME_SURGE_RATIO:
                     volume_flag = True
         if volume_flag:
             flags.append(FLAG_VOLUME_SURGE)
@@ -180,7 +188,7 @@ def score_events(
                 try:
                     pre_shares = pd.to_numeric(pre_ex["change_shares"], errors="coerce").sum()
                     post_shares = pd.to_numeric(post_ex["change_shares"], errors="coerce").sum()
-                    if pre_shares > 0 and post_shares < pre_shares * 0.95:
+                    if pre_shares > 0 and post_shares < pre_shares * HOLDINGS_DECREASE_RATIO:
                         holdings_flag = True
                 except (ValueError, TypeError) as exc:
                     log.debug("Holdings comparison failed for %s: %s", corp_code, exc)
@@ -206,6 +214,72 @@ def score_events(
             "dart_link": f"https://dart.fss.or.kr/corp/searchAjax.do?textCrpCik={corp_code}",
         }
         results.append(row)
+
+    df_results = pd.DataFrame(results)
+    if not df_results.empty:
+        df_results = df_results.sort_values("anomaly_score", ascending=False)
+    return df_results
+
+
+def score_disclosures(
+    df_disc_clean: pd.DataFrame,
+    df_pv_clean: pd.DataFrame,
+    df_map: pd.DataFrame,
+) -> pd.DataFrame:
+    """Score disclosure timing anomalies against price/volume movement.
+
+    Returns DataFrame with flag columns, anomaly_score, and timing label.
+    """
+    if not df_map.empty and "corp_code" in df_map.columns:
+        map_lookup = df_map.drop_duplicates("corp_code").set_index("corp_code")["ticker"].to_dict()
+    else:
+        map_lookup = {}
+
+    pv_idx = df_pv_clean.set_index(["ticker", "date"])
+
+    results = []
+    for _, disc in df_disc_clean.iterrows():
+        corp_code = disc["corp_code"]
+        ticker = map_lookup.get(corp_code)
+        if not ticker:
+            continue
+
+        t_date = disc["trading_date"]
+        gap_hours = disc["gap_hours"]
+
+        for offset_days, label in [(0, "same_day"), (-1, "prior_day")]:
+            check_date = t_date + pd.Timedelta(days=offset_days)
+            key = (ticker, check_date)
+            if key not in pv_idx.index:
+                continue
+
+            row_pv = pv_idx.loc[key]
+            price_chg = float(row_pv.get("price_change_pct", np.nan))
+            vol_ratio = float(row_pv.get("volume_ratio", np.nan))
+
+            if np.isnan(price_chg) or np.isnan(vol_ratio):
+                continue
+
+            anomaly_score = abs(price_chg) * vol_ratio * gap_hours
+            flag = abs(price_chg) >= TIMING_PRICE_CHANGE_PCT and vol_ratio >= TIMING_VOLUME_RATIO
+
+            if flag or abs(price_chg) >= TIMING_BORDERLINE_PRICE_PCT:
+                results.append({
+                    "corp_code": corp_code,
+                    "ticker": ticker,
+                    "filing_date": str(t_date.date()),
+                    "check_date": str(check_date.date()),
+                    "timing": label,
+                    "disclosure_type": disc.get("type"),
+                    "title": disc.get("title"),
+                    "price_change_pct": round(price_chg, 2),
+                    "volume_ratio": round(vol_ratio, 2),
+                    "gap_hours": round(gap_hours, 1),
+                    "anomaly_score": round(anomaly_score, 2),
+                    "flag": flag,
+                    "is_material": disc.get("is_material", False),
+                    "dart_link": disc.get("dart_link"),
+                })
 
     df_results = pd.DataFrame(results)
     if not df_results.empty:

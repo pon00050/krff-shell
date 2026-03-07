@@ -22,15 +22,10 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 # ─── Path constants ────────────────────────────────────────────────────────────
-from src._paths import PROJECT_ROOT as _PROJECT_ROOT, PROCESSED_DIR as _PROCESSED
+from src._paths import PROJECT_ROOT as _PROJECT_ROOT
+from src import data_access as _da
 
-_ANALYSIS_DIR = _PROJECT_ROOT / "03_Analysis"
-_REPORTS_DIR  = _ANALYSIS_DIR / "reports"
-
-# CSV paths — module-level so tests can monkeypatch
-_CB_BW_CSV   = _ANALYSIS_DIR / "cb_bw_summary.csv"
-_TIMING_CSV  = _ANALYSIS_DIR / "timing_anomalies.csv"
-_NETWORK_CSV = _ANALYSIS_DIR / "officer_network" / "centrality_report.csv"
+_REPORTS_DIR = _PROJECT_ROOT / "03_Analysis" / "reports"
 
 _FORBIDDEN_MODEL  = "claude-opus-4-6"
 _SYNTHESIS_MODEL  = "claude-sonnet-4-6"
@@ -39,98 +34,16 @@ _RISK_TIER_ORDER  = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
 
 __all__ = [
     "generate_report",
+    "get_company_summary",
+    "get_report_html",
+    "build_company_summary",
+    "build_report_html",
     "synthesize_with_claude",
     "chart_mscore_trend",
     "chart_component_bar",
     "chart_cb_bw_timeline",
     "chart_timing_anomalies",
 ]
-
-
-# ─── Private data loaders ──────────────────────────────────────────────────────
-
-def _load_parquet(name: str, corp_code: str, sort_by: str | None = None) -> pd.DataFrame:
-    """Load a parquet table from PROCESSED_DIR, filtered to one corp_code."""
-    p = _PROCESSED / name
-    if not p.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_parquet(p)
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        result = df[mask]
-        if sort_by and sort_by in result.columns:
-            result = result.sort_values(sort_by)
-        return result.reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading %s for %s: %s", name, corp_code, exc)
-        return pd.DataFrame()
-
-
-def _load_csv(path: Path, corp_code: str) -> pd.DataFrame:
-    """Load a CSV analysis output, filtered to one corp_code."""
-    if not path.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(path, encoding="utf-8-sig")
-        if "corp_code" not in df.columns:
-            return pd.DataFrame()
-        mask = df["corp_code"].astype(str).str.zfill(8) == corp_code
-        return df[mask].reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading %s for %s: %s", path.name, corp_code, exc)
-        return pd.DataFrame()
-
-
-def _load_company_name(corp_code: str, beneish_df: pd.DataFrame | None = None) -> str:
-    """Extract company name from pre-loaded beneish data or corp_ticker_map."""
-    if beneish_df is not None and not beneish_df.empty and "company_name" in beneish_df.columns:
-        val = beneish_df["company_name"].iloc[0]
-        if pd.notna(val) and str(val).strip():
-            return str(val).strip()
-    # Fallback to corp_ticker_map
-    p2 = _PROCESSED / "corp_ticker_map.parquet"
-    if p2.exists():
-        try:
-            df2 = pd.read_parquet(p2)
-            mask2 = df2["corp_code"].astype(str).str.zfill(8) == corp_code
-            rows2 = df2[mask2]
-            if not rows2.empty:
-                for col in ("company_name", "corp_name", "name"):
-                    if col in rows2.columns:
-                        val = rows2[col].iloc[0]
-                        if pd.notna(val) and str(val).strip():
-                            return str(val).strip()
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            log.warning("Error loading company name from corp_ticker_map for %s: %s", corp_code, exc)
-    return corp_code
-
-
-def _load_officer_network(corp_code: str) -> pd.DataFrame:
-    """Load officer network CSV with token-match filtering on 'companies' column."""
-    if not _NETWORK_CSV.exists():
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(_NETWORK_CSV, encoding="utf-8-sig")
-        if "companies" not in df.columns:
-            return pd.DataFrame()
-        mask = df["companies"].apply(
-            lambda val: corp_code in [c.strip() for c in str(val).split(",")]
-            if pd.notna(val) else False
-        )
-        return df[mask].reset_index(drop=True)
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as exc:
-        log.warning("Error loading officer_network for %s: %s", corp_code, exc)
-        return pd.DataFrame()
 
 
 # ─── Chart functions ───────────────────────────────────────────────────────────
@@ -357,7 +270,7 @@ def _highest_risk_tier(beneish_df: pd.DataFrame) -> str:
     return max(tiers, key=lambda t: _RISK_TIER_ORDER.get(t, 0))
 
 
-def _build_company_summary(
+def build_company_summary(
     corp_code: str,
     company_name: str,
     ticker: str,
@@ -425,7 +338,7 @@ def _build_company_summary(
     }
 
 
-def _build_report_html(
+def build_report_html(
     *,
     corp_code: str,
     company_name: str,
@@ -807,6 +720,84 @@ def synthesize_with_claude(company_summary: dict) -> list[dict]:
         return []
 
 
+# ─── Public API for FastAPI ────────────────────────────────────────────────────
+
+def get_company_summary(corp_code: str) -> dict:
+    """Load all data for one company and return structured summary dict.
+
+    Returns dict validating against models.CompanySummary.
+    """
+    corp_code = corp_code.zfill(8)
+    beneish_df = _da.load_parquet("beneish_scores.parquet", corp_code, sort_by="year")
+    company_name = _da.load_company_name(corp_code, beneish_df)
+    cb_bw_df = _da.load_csv(_da.CB_BW_CSV, corp_code)
+    timing_df = _da.load_csv(_da.TIMING_CSV, corp_code)
+    network_df = _da.load_officer_network(corp_code)
+    ticker = ""
+    if not beneish_df.empty and "ticker" in beneish_df.columns:
+        t = beneish_df["ticker"].iloc[0]
+        if pd.notna(t):
+            ticker = str(t)
+    return build_company_summary(
+        corp_code, company_name, ticker,
+        beneish_df, cb_bw_df, timing_df, network_df,
+    )
+
+
+def get_report_html(corp_code: str, skip_claude: bool = True) -> str:
+    """Generate HTML report string without writing to disk.
+
+    Returns the full HTML string. Shares chart + summary building
+    with generate_report().
+    """
+    corp_code = corp_code.zfill(8)
+
+    beneish_df = _da.load_parquet("beneish_scores.parquet", corp_code, sort_by="year")
+    company_name = _da.load_company_name(corp_code, beneish_df)
+
+    cb_bw_df = _da.load_csv(_da.CB_BW_CSV, corp_code)
+    timing_df = _da.load_csv(_da.TIMING_CSV, corp_code)
+    network_df = _da.load_officer_network(corp_code)
+    holdings_df = _da.load_parquet("officer_holdings.parquet", corp_code)
+
+    ticker = ""
+    if not beneish_df.empty and "ticker" in beneish_df.columns:
+        t = beneish_df["ticker"].iloc[0]
+        if pd.notna(t):
+            ticker = str(t)
+
+    fig_mscore = chart_mscore_trend(beneish_df)
+    fig_components = chart_component_bar(beneish_df)
+    fig_cb_bw = chart_cb_bw_timeline(cb_bw_df)
+    fig_timing = chart_timing_anomalies(timing_df)
+
+    company_summary = build_company_summary(
+        corp_code, company_name, ticker,
+        beneish_df, cb_bw_df, timing_df, network_df,
+    )
+    flags: list[dict] = [] if skip_claude else synthesize_with_claude(company_summary)
+
+    return build_report_html(
+        corp_code=corp_code,
+        company_name=company_name,
+        ticker=ticker,
+        beneish_df=beneish_df,
+        cb_bw_df=cb_bw_df,
+        timing_df=timing_df,
+        network_df=network_df,
+        holdings_df=holdings_df,
+        fig_mscore=fig_mscore,
+        fig_components=fig_components,
+        fig_cb_bw=fig_cb_bw,
+        fig_timing=fig_timing,
+        flags=flags,
+        skip_claude=skip_claude,
+        cb_bw_csv_exists=_da.CB_BW_CSV.exists(),
+        timing_csv_exists=_da.TIMING_CSV.exists(),
+        network_csv_exists=_da.NETWORK_CSV.exists(),
+    )
+
+
 # ─── Main entrypoint ───────────────────────────────────────────────────────────
 
 def generate_report(
@@ -832,18 +823,18 @@ def generate_report(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load data (file existence tracked before calling loaders)
-    beneish_df   = _load_parquet("beneish_scores.parquet", corp_code, sort_by="year")
-    company_name = _load_company_name(corp_code, beneish_df)
+    beneish_df   = _da.load_parquet("beneish_scores.parquet", corp_code, sort_by="year")
+    company_name = _da.load_company_name(corp_code, beneish_df)
 
-    cb_bw_csv_exists = _CB_BW_CSV.exists()
-    cb_bw_df         = _load_csv(_CB_BW_CSV, corp_code)
+    cb_bw_csv_exists = _da.CB_BW_CSV.exists()
+    cb_bw_df         = _da.load_csv(_da.CB_BW_CSV, corp_code)
 
-    timing_csv_exists = _TIMING_CSV.exists()
-    timing_df         = _load_csv(_TIMING_CSV, corp_code)
+    timing_csv_exists = _da.TIMING_CSV.exists()
+    timing_df         = _da.load_csv(_da.TIMING_CSV, corp_code)
 
-    network_csv_exists = _NETWORK_CSV.exists()
-    network_df         = _load_officer_network(corp_code)
-    holdings_df        = _load_parquet("officer_holdings.parquet", corp_code)
+    network_csv_exists = _da.NETWORK_CSV.exists()
+    network_df         = _da.load_officer_network(corp_code)
+    holdings_df        = _da.load_parquet("officer_holdings.parquet", corp_code)
 
     # Get ticker from beneish data
     ticker = ""
@@ -859,7 +850,7 @@ def generate_report(
     fig_timing     = chart_timing_anomalies(timing_df)
 
     # Build company summary for Claude
-    company_summary = _build_company_summary(
+    company_summary = build_company_summary(
         corp_code, company_name, ticker,
         beneish_df, cb_bw_df, timing_df, network_df,
     )
@@ -868,7 +859,7 @@ def generate_report(
     flags: list[dict] = [] if skip_claude else synthesize_with_claude(company_summary)
 
     # Build and write HTML
-    html = _build_report_html(
+    html = build_report_html(
         corp_code=corp_code,
         company_name=company_name,
         ticker=ticker,

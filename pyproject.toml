@@ -37,6 +37,9 @@ dependencies = [
     "lifelines>=0.29.0",
     "networkx>=3.0",
     "kaleido>=0.2.1",
+    "pydantic>=2.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [project.scripts]

@@ -1437,27 +1437,27 @@ class TestOfficerFlagThreshold:
         import ast
         src_path = (
             pathlib.Path(__file__).resolve().parents[1]
-            / "03_Analysis"
-            / "run_officer_network.py"
+            / "src"
+            / "constants.py"
         )
-        assert src_path.exists(), f"run_officer_network.py not found at {src_path}"
+        assert src_path.exists(), f"constants.py not found at {src_path}"
         tree = ast.parse(src_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "FLAG_THRESHOLD":
+                    if isinstance(target, ast.Name) and target.id == "OFFICER_FLAG_THRESHOLD":
                         assert isinstance(node.value, ast.Constant), (
-                            "FLAG_THRESHOLD must be a literal constant"
+                            "OFFICER_FLAG_THRESHOLD must be a literal constant"
                         )
                         assert node.value.value == 2, (
-                            f"FLAG_THRESHOLD={node.value.value}; expected 2. "
+                            f"OFFICER_FLAG_THRESHOLD={node.value.value}; expected 2. "
                             "Session 33: holdings_flag operational; 27 events at "
                             "flag_count=2. Threshold=2 produces a high-precision "
                             "seed set. Do not revert to 1 without updating this test."
                         )
                         return
         raise AssertionError(
-            "FLAG_THRESHOLD constant not found in run_officer_network.py"
+            "OFFICER_FLAG_THRESHOLD constant not found in src/constants.py"
         )
 
 
@@ -1899,8 +1899,8 @@ class TestReportModule:
         })
 
     def _patch_loaders(self, monkeypatch, beneish_df, cb_bw_df, timing_df):
-        """Monkeypatch all loaders and CSV path constants in src.report."""
-        import src.report as rpt
+        """Monkeypatch all loaders and CSV path constants in src.data_access."""
+        import src.data_access as da
 
         def _filter(df, cc):
             if df.empty:
@@ -1909,14 +1909,14 @@ class TestReportModule:
                 return df.copy()
             return df[df["corp_code"].astype(str) == cc].copy()
 
-        monkeypatch.setattr(rpt, "_load_parquet", lambda name, cc, sort_by=None: _filter(beneish_df, cc) if "beneish" in name else pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_company_name", lambda cc, beneish_df=None: "피씨엘" if cc == "01051092" else cc)
-        monkeypatch.setattr(rpt, "_load_csv", lambda path, cc: _filter(cb_bw_df, cc) if "cb_bw" in str(path) else _filter(timing_df, cc))
-        monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
+        monkeypatch.setattr(da, "load_parquet", lambda name, cc=None, sort_by=None, processed_dir=None: _filter(beneish_df, cc) if "beneish" in name else pd.DataFrame())
+        monkeypatch.setattr(da, "load_company_name", lambda cc, beneish_df=None, processed_dir=None: "피씨엘" if cc == "01051092" else cc)
+        monkeypatch.setattr(da, "load_csv", lambda path, cc=None: _filter(cb_bw_df, cc) if "cb_bw" in str(path) else _filter(timing_df, cc))
+        monkeypatch.setattr(da, "load_officer_network", lambda cc, network_csv=None: pd.DataFrame())
         _nonexistent = pathlib.Path("/nonexistent/fake.csv")
-        monkeypatch.setattr(rpt, "_CB_BW_CSV", _nonexistent)
-        monkeypatch.setattr(rpt, "_TIMING_CSV", _nonexistent)
-        monkeypatch.setattr(rpt, "_NETWORK_CSV", _nonexistent)
+        monkeypatch.setattr(da, "CB_BW_CSV", _nonexistent)
+        monkeypatch.setattr(da, "TIMING_CSV", _nonexistent)
+        monkeypatch.setattr(da, "NETWORK_CSV", _nonexistent)
 
     def test_generate_report_returns_path(
         self, tmp_path, monkeypatch, synthetic_beneish, synthetic_cb_bw, synthetic_timing
@@ -1960,23 +1960,25 @@ class TestReportModule:
 
     def test_corp_code_zero_padded(self, tmp_path, monkeypatch):
         """Passing '1051092' (7 digits) causes loaders to be called with '01051092'."""
+        import src.data_access as da
         import src.report as rpt
         called_with: list[str] = []
 
-        def fake_load_parquet(name: str, cc: str, sort_by=None) -> pd.DataFrame:
-            called_with.append(cc)
+        def fake_load_parquet(name: str, cc=None, sort_by=None, processed_dir=None) -> pd.DataFrame:
+            if cc is not None:
+                called_with.append(cc)
             return pd.DataFrame()
 
-        monkeypatch.setattr(rpt, "_load_parquet", fake_load_parquet)
-        monkeypatch.setattr(rpt, "_load_company_name", lambda cc, beneish_df=None: cc)
-        monkeypatch.setattr(rpt, "_load_csv", lambda path, cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_load_officer_network", lambda cc: pd.DataFrame())
-        monkeypatch.setattr(rpt, "_CB_BW_CSV", pathlib.Path("/nonexistent/cb_bw.csv"))
-        monkeypatch.setattr(rpt, "_TIMING_CSV", pathlib.Path("/nonexistent/timing.csv"))
-        monkeypatch.setattr(rpt, "_NETWORK_CSV", pathlib.Path("/nonexistent/network.csv"))
+        monkeypatch.setattr(da, "load_parquet", fake_load_parquet)
+        monkeypatch.setattr(da, "load_company_name", lambda cc, beneish_df=None, processed_dir=None: cc)
+        monkeypatch.setattr(da, "load_csv", lambda path, cc=None: pd.DataFrame())
+        monkeypatch.setattr(da, "load_officer_network", lambda cc, network_csv=None: pd.DataFrame())
+        monkeypatch.setattr(da, "CB_BW_CSV", pathlib.Path("/nonexistent/cb_bw.csv"))
+        monkeypatch.setattr(da, "TIMING_CSV", pathlib.Path("/nonexistent/timing.csv"))
+        monkeypatch.setattr(da, "NETWORK_CSV", pathlib.Path("/nonexistent/network.csv"))
         out = tmp_path / "padded_report.html"
         rpt.generate_report("1051092", output_path=out, skip_claude=True)
-        assert called_with, "Expected _load_parquet to be called"
+        assert called_with, "Expected load_parquet to be called"
         assert called_with[0] == "01051092", f"Expected '01051092', got '{called_with[0]}'"
 
     def test_mscore_trend_chart_returns_figure(self, synthetic_beneish):
@@ -2187,3 +2189,194 @@ class TestHoldingsFlagJoin:
         cb_codes = set(cb["corp_code"].astype(str).str.zfill(8))
         overlap = len(oh_codes & cb_codes)
         assert overlap > 100, f"Only {overlap} corp_codes overlap after normalization"
+
+
+# ─── Category 22: Constants consolidation ─────────────────────────────────────
+
+class TestConstantsConsolidation:
+    """Verify all scoring constants exist in src/constants.py with correct types."""
+
+    def test_cb_bw_scoring_constants_exist(self):
+        from src.constants import (
+            REPRICING_DISCOUNT_RATIO,
+            EXERCISE_PEAK_WINDOW_DAYS,
+            VOLUME_SURGE_RATIO,
+            HOLDINGS_DECREASE_RATIO,
+            PRICE_WINDOW_DAYS,
+        )
+        assert isinstance(REPRICING_DISCOUNT_RATIO, float)
+        assert isinstance(EXERCISE_PEAK_WINDOW_DAYS, int)
+        assert isinstance(VOLUME_SURGE_RATIO, float)
+        assert isinstance(HOLDINGS_DECREASE_RATIO, float)
+        assert isinstance(PRICE_WINDOW_DAYS, int)
+
+    def test_timing_constants_exist(self):
+        from src.constants import (
+            TIMING_PRICE_CHANGE_PCT,
+            TIMING_VOLUME_RATIO,
+            TIMING_BORDERLINE_PRICE_PCT,
+        )
+        assert isinstance(TIMING_PRICE_CHANGE_PCT, float)
+        assert isinstance(TIMING_VOLUME_RATIO, float)
+        assert isinstance(TIMING_BORDERLINE_PRICE_PCT, float)
+
+    def test_officer_flag_threshold_exists(self):
+        from src.constants import OFFICER_FLAG_THRESHOLD
+        assert OFFICER_FLAG_THRESHOLD == 2
+
+
+# ─── Category 23: score_disclosures importable from _scoring ──────────────────
+
+class TestScoringModule:
+    """Verify score_disclosures is importable from 03_Analysis/_scoring.py."""
+
+    def test_score_disclosures_importable(self):
+        sys.path.insert(0, str(ROOT / "03_Analysis"))
+        try:
+            from _scoring import score_disclosures
+            assert callable(score_disclosures)
+        finally:
+            sys.path.pop(0)
+
+    def test_score_disclosures_empty_input(self):
+        sys.path.insert(0, str(ROOT / "03_Analysis"))
+        try:
+            from _scoring import score_disclosures
+            empty_pv = pd.DataFrame(columns=["ticker", "date", "close", "volume", "price_change_pct", "volume_ratio"])
+            result = score_disclosures(pd.DataFrame(), empty_pv, pd.DataFrame())
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == 0
+        finally:
+            sys.path.pop(0)
+
+
+# ─── Category 24: data_access module ─────────────────────────────────────────
+
+class TestDataAccessModule:
+    """Tests for src/data_access.py."""
+
+    def test_load_parquet_missing_file(self, tmp_path):
+        from src.data_access import load_parquet
+        result = load_parquet("nonexistent.parquet", processed_dir=tmp_path)
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+
+    def test_load_parquet_no_filter(self, tmp_path):
+        from src.data_access import load_parquet
+        df = pd.DataFrame({"corp_code": ["01051092", "00364254"], "val": [1, 2]})
+        df.to_parquet(tmp_path / "test.parquet", index=False)
+        result = load_parquet("test.parquet", processed_dir=tmp_path)
+        assert len(result) == 2
+
+    def test_load_parquet_with_filter(self, tmp_path):
+        from src.data_access import load_parquet
+        df = pd.DataFrame({"corp_code": ["01051092", "00364254"], "val": [1, 2]})
+        df.to_parquet(tmp_path / "test.parquet", index=False)
+        result = load_parquet("test.parquet", corp_code="01051092", processed_dir=tmp_path)
+        assert len(result) == 1
+        assert result["corp_code"].iloc[0] == "01051092"
+
+    def test_load_csv_missing_file(self):
+        from src.data_access import load_csv
+        result = load_csv(pathlib.Path("/nonexistent/file.csv"))
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+
+    def test_load_company_name_from_beneish(self):
+        from src.data_access import load_company_name
+        df = pd.DataFrame({"company_name": ["피씨엘"]})
+        assert load_company_name("01051092", beneish_df=df) == "피씨엘"
+
+    def test_load_company_name_fallback(self, tmp_path):
+        from src.data_access import load_company_name
+        result = load_company_name("99999999", processed_dir=tmp_path)
+        assert result == "99999999"
+
+
+# ─── Category 25: Pydantic model validation ──────────────────────────────────
+
+class TestPydanticModels:
+    """Validate Pydantic models against actual function output shapes."""
+
+    def test_company_summary_validates(self, monkeypatch):
+        import src.data_access as da
+        from src.models import CompanySummary
+        from src.report import get_company_summary
+
+        monkeypatch.setattr(da, "load_parquet", lambda name, cc=None, sort_by=None, processed_dir=None: pd.DataFrame())
+        monkeypatch.setattr(da, "load_company_name", lambda cc, beneish_df=None, processed_dir=None: "Test")
+        monkeypatch.setattr(da, "load_csv", lambda path, cc=None: pd.DataFrame())
+        monkeypatch.setattr(da, "load_officer_network", lambda cc, network_csv=None: pd.DataFrame())
+        monkeypatch.setattr(da, "CB_BW_CSV", pathlib.Path("/nonexistent"))
+        monkeypatch.setattr(da, "TIMING_CSV", pathlib.Path("/nonexistent"))
+        monkeypatch.setattr(da, "NETWORK_CSV", pathlib.Path("/nonexistent"))
+
+        result = get_company_summary("01051092")
+        validated = CompanySummary.model_validate(result)
+        assert validated.corp_code == "01051092"
+
+    def test_pipeline_status_validates(self, tmp_path):
+        from src.models import PipelineStatus
+        from src.status import get_status
+
+        result = get_status(processed_dir=tmp_path, run_summary_path=tmp_path / "none.json")
+        validated = PipelineStatus.model_validate(result)
+        assert validated.summary.total > 0
+
+    def test_data_quality_validates(self, tmp_path):
+        from src.models import DataQuality
+        from src.quality import get_quality
+
+        result = get_quality(processed_dir=tmp_path, stat_outputs_dir=tmp_path)
+        validated = DataQuality.model_validate(result)
+        assert isinstance(validated.tables, list)
+
+
+# ─── Category 26: Report public API ──────────────────────────────────────────
+
+class TestReportPublicAPI:
+    """Tests for get_company_summary() and get_report_html()."""
+
+    def _patch_da(self, monkeypatch):
+        import src.data_access as da
+        monkeypatch.setattr(da, "load_parquet", lambda name, cc=None, sort_by=None, processed_dir=None: pd.DataFrame())
+        monkeypatch.setattr(da, "load_company_name", lambda cc, beneish_df=None, processed_dir=None: "TestCo")
+        monkeypatch.setattr(da, "load_csv", lambda path, cc=None: pd.DataFrame())
+        monkeypatch.setattr(da, "load_officer_network", lambda cc, network_csv=None: pd.DataFrame())
+        monkeypatch.setattr(da, "CB_BW_CSV", pathlib.Path("/nonexistent"))
+        monkeypatch.setattr(da, "TIMING_CSV", pathlib.Path("/nonexistent"))
+        monkeypatch.setattr(da, "NETWORK_CSV", pathlib.Path("/nonexistent"))
+
+    def test_get_company_summary_returns_dict(self, monkeypatch):
+        from src.report import get_company_summary
+        self._patch_da(monkeypatch)
+        result = get_company_summary("01051092")
+        assert isinstance(result, dict)
+        assert result["corp_code"] == "01051092"
+        assert result["company_name"] == "TestCo"
+
+    def test_get_report_html_returns_string(self, monkeypatch):
+        from src.report import get_report_html
+        self._patch_da(monkeypatch)
+        result = get_report_html("01051092")
+        assert isinstance(result, str)
+        assert "<!DOCTYPE html>" in result
+
+
+# ─── Category 27: _paths env var override ─────────────────────────────────────
+
+class TestPathsEnvOverride:
+    """Verify KRFF_DATA_DIR environment variable override works."""
+
+    def test_krff_data_dir_override(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("KRFF_DATA_DIR", str(tmp_path / "custom"))
+        # Force reimport to pick up env var
+        import importlib
+        import src._paths
+        importlib.reload(src._paths)
+        try:
+            assert src._paths.PROCESSED_DIR == tmp_path / "custom"
+        finally:
+            # Restore original
+            monkeypatch.delenv("KRFF_DATA_DIR", raising=False)
+            importlib.reload(src._paths)
