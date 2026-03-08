@@ -345,22 +345,21 @@ def _write_parquet(df_scored, os, pd, Path):
             "skipping beneish_scores.parquet write to prevent data loss. "
             "Re-run without --sample or ensure sampled company is non-financial sector."
         )
-        return parquet_path, df_out
+    else:
+        df_out.to_parquet(parquet_path, index=False, engine="pyarrow")
 
-    df_out.to_parquet(parquet_path, index=False, engine="pyarrow")
-
-    # Upload to R2 if credentials are configured
-    endpoint = os.getenv("R2_ENDPOINT_URL", "")
-    key      = os.getenv("R2_ACCESS_KEY_ID", "")
-    secret   = os.getenv("R2_SECRET_ACCESS_KEY", "")
-    if all([endpoint, key, secret]):
-        import s3fs
-        bucket = os.getenv("R2_BUCKET", "kr-forensic-finance")
-        fs = s3fs.S3FileSystem(
-            key=key, secret=secret,
-            client_kwargs={"endpoint_url": endpoint},
-        )
-        fs.put(str(parquet_path), f"{bucket}/processed/beneish_scores.parquet")
+        # Upload to R2 if credentials are configured
+        endpoint = os.getenv("R2_ENDPOINT_URL", "")
+        key      = os.getenv("R2_ACCESS_KEY_ID", "")
+        secret   = os.getenv("R2_SECRET_ACCESS_KEY", "")
+        if all([endpoint, key, secret]):
+            import s3fs
+            bucket = os.getenv("R2_BUCKET", "kr-forensic-finance")
+            fs = s3fs.S3FileSystem(
+                key=key, secret=secret,
+                client_kwargs={"endpoint_url": endpoint},
+            )
+            fs.put(str(parquet_path), f"{bucket}/processed/beneish_scores.parquet")
 
     return parquet_path, df_out
 

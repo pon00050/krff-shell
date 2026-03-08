@@ -216,7 +216,7 @@ Multi-agent design (Phase 4 target):
 
 | ID | Description | Phase | Effort |
 |---|---|---|---|
-| PR5 | Historical backfill 2014–2018 | 4 | Medium |
+| ~~PR5~~ | ~~Historical backfill 2014–2018~~ — **Partial-Complete (Session 50):** 2017–2018 backfill done; 2014–2016 deferred (most issuers resolved). `company_financials.parquet`: 7,042 → 9,310 rows (2019–2023 → 2017–2023). `beneish_scores.parquet`: 5,476 → 7,447 rows, 2018–2023, flagged 1,013 → 1,255. 25 new extreme outliers added to `BENEISH_EXTREME_OUTLIERS`. Beneish early-return Marimo bug fixed. | 4 | Medium |
 | ~~A1~~ | ~~Automate recurring data refresh~~ — **Complete (Session 38):** `krff refresh` command added to `cli.py`; runs 6 stages in sequence (DART → transform → beneish_screen → cb_bw → timing → network); `--sample N` and `--skip-analysis` flags | 2 | Low |
 | I1 | Verify PyKRX from hosted IPs — **Infrastructure ready (Session 49):** `--backend` option added to `krff run`/`krff refresh`; `finance-datareader`+`yfinance` as `[hosted]` optional deps; `test-hosted-backends.yml` workflow_dispatch CI workflow; trigger from GitHub Actions UI to verify | 5 | Low |
 | ~~DQ1~~ | ~~XBRL unit-scale corrections~~ — **Complete (Session 48):** frmtrm_amount cross-check confirmed neither company is a unit error; `BENEISH_EXTREME_OUTLIERS` frozenset added to `src/constants.py`; 3 Category 30 tests added; 216 pass | 1 | Low |
