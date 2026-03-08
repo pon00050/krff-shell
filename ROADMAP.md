@@ -200,6 +200,28 @@ No code execution required from end users — they read, not operate.
 | W4 | Alert feed with severity levels and source links | Planned |
 | W5 | Admin review layer (false-positive flagging, label staging) | Planned |
 
+### W1 — Public Demo MVP
+
+Goal: credibility signal for institutional discovery, not traffic.
+Success KPI: **1 institutional conversation** (자산운용사 리스크팀, 증권사 리서치팀, or 회계법인 감사팀).
+
+- [ ] Deploy FastAPI to Railway (simplest) / Fly.io / Render / Cloud Run
+- [ ] Landing page: Home / About / Demo / Contact
+- [ ] Demo: company code input → anomaly report output (3 working demo companies minimum)
+- [ ] Lead capture CTA: "Request Institutional Access" or "Contact for Institutional License"
+- [ ] Error handling: no stack traces to public; graceful missing-corp_code page
+- [ ] Uptime: stays up 30+ days without manual intervention
+
+### W2 — Content Marketing
+
+Platform sequencing: website → video → LinkedIn → Substack/브런치 → institutional outreach.
+
+- [ ] YouTube demo video (KR primary: "대한민국 상장사 1700개를 자동으로 감시하는 시스템"; EN secondary)
+- [ ] LinkedIn post with website + video links (institutional discovery)
+- [ ] Substack or 브런치 methodology article ("KOSDAQ Accounting Anomaly Study 2019–2024")
+- [ ] "Top 20 Anomaly Companies" free sample report (drives inbound; excludes Tier 1 leads)
+- [ ] Pilot offer: 3-month free/discounted license → reference case → case study
+
 Design principles:
 - Frontend reads only published state from operational DB (atomic publish pattern)
 - Public language: "signal", "anomaly", "pattern" — never "fraud confirmed" or "criminal"
