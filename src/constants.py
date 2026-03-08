@@ -24,6 +24,8 @@ TIMING_BORDERLINE_PRICE_PCT = 3.0
 # DART listing API returns YYYYMMDD only (no time); 18:00 KST assumed for gap_hours.
 # Market close: 15:30 KST (15.5 decimal hours). Gap = 18.0 - 15.5 = 2.5 hours.
 TIMING_GAP_HOURS_ASSUMED = 2.5
+# Prior-day filings: ~18:00 KST filing → 09:00 open next day → 15.0 h gap.
+TIMING_GAP_HOURS_PRIOR_DAY = 15.0
 
 # Officer network
 OFFICER_FLAG_THRESHOLD = 2

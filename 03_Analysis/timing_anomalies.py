@@ -150,6 +150,17 @@ def _prepare_price(df_pv, pd):
 @app.cell
 def _score_disclosures(df_disc_clean, df_pv_clean, df_map, pd, np):
     """Score each disclosure against timing anomaly criteria."""
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    from src.constants import TIMING_GAP_HOURS_ASSUMED, TIMING_GAP_HOURS_PRIOR_DAY
+
+    # DART listing API returns dates only — use timing label to differentiate gap.
+    # same_day:  filing ~18:00 KST, market close 15:30 → 2.5 h gap
+    # prior_day: filing ~18:00 KST, market open 09:00 next day → 15.0 h gap
+    _GAP_MAP = {
+        "same_day": TIMING_GAP_HOURS_ASSUMED,    # 2.5
+        "prior_day": TIMING_GAP_HOURS_PRIOR_DAY,  # 15.0
+    }
 
     # corp_code → ticker map
     if not df_map.empty and "corp_code" in df_map.columns:
@@ -168,7 +179,6 @@ def _score_disclosures(df_disc_clean, df_pv_clean, df_map, pd, np):
             continue
 
         t_date = disc["trading_date"]
-        gap_hours = disc["gap_hours"]
 
         # Look up same-day and prior-day price action
         for offset_days, label in [(0, "same_day"), (-1, "prior_day")]:
@@ -184,6 +194,7 @@ def _score_disclosures(df_disc_clean, df_pv_clean, df_map, pd, np):
             if np.isnan(price_chg) or np.isnan(vol_ratio):
                 continue
 
+            gap_hours = _GAP_MAP.get(label, TIMING_GAP_HOURS_ASSUMED)
             anomaly_score = abs(price_chg) * vol_ratio * gap_hours
             flag = abs(price_chg) >= 5.0 and vol_ratio >= 2.0
 

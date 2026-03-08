@@ -28,6 +28,7 @@ from src.constants import (
     TIMING_VOLUME_RATIO,
     TIMING_BORDERLINE_PRICE_PCT,
     TIMING_GAP_HOURS_ASSUMED,
+    TIMING_GAP_HOURS_PRIOR_DAY,
 )
 
 log = logging.getLogger(__name__)
@@ -253,7 +254,10 @@ def score_disclosures(
             continue
 
         t_date = disc["trading_date"]
-        gap_hours = disc["gap_hours"]
+        _gap_map = {
+            "same_day": TIMING_GAP_HOURS_ASSUMED,    # 2.5 h: filing ~18:00, close 15:30
+            "prior_day": TIMING_GAP_HOURS_PRIOR_DAY,  # 15.0 h: filing ~18:00, open 09:00 next day
+        }
 
         for offset_days, label in [(0, "same_day"), (-1, "prior_day")]:
             check_date = t_date + pd.Timedelta(days=offset_days)
@@ -268,6 +272,7 @@ def score_disclosures(
             if np.isnan(price_chg) or np.isnan(vol_ratio):
                 continue
 
+            gap_hours = _gap_map[label]
             anomaly_score = abs(price_chg) * vol_ratio * gap_hours
             is_material = bool(disc.get("is_material", False))
             flag = (

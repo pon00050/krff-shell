@@ -81,6 +81,7 @@
 | — | Label expansion — 알티캐스트 | Web search confirmed CEO 서정규 배임 기소 2023-12-19 (특경법); added as fraud=1; labels 27→28 (15 fraud=1); bootstrap −1.75 stable; RF AUC 0.740; TATA −0.101 |
 | A1 | Automate recurring data refresh | `krff refresh` command added to `cli.py`; 6-stage wrapper; `--sample` + `--skip-analysis` flags; 168 tests pass |
 | A2 | Pipeline freshness checker | `krff audit` command added; DAG encodes 6 stages; detects stale outputs via mtime comparison; propagates staleness downstream; 7 new tests; 230 total pass |
+| A3 | Statistical test orchestrator | `krff stats` command added; `STATS_DAG` (14 nodes); `--dry-run` + `--verbose`; 8 new tests; 250 total pass — **Complete (Session 62)** |
 
 ### Completed (Session 36)
 
@@ -118,6 +119,30 @@
 | ID | Description | Blocked by |
 |---|---|---|
 | S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation only |
+
+## Output Quality Issues — Session 62 Review
+
+Identified by `/review-pipeline` on 2026-03-08. Address before next statistical test run.
+
+| Priority | ID | Issue | Impact | Status |
+|---|---|---|---|---|
+| **High** | OQ1 | SEIBRO still inactive (resultCode=99, KI-012) — Flags 1 & 2 (repricing_below_market, exercise_at_peak) are effectively off; near-zero True counts in `repricing_flag` and `exercise_cluster_flag` | CB/BW screen ~50% blind; 756 flagged events are almost entirely single-flag volume surges | Blocked on API key activation |
+| **High** | OQ2 | FDR timing p-values all = 0.0001 (floor) — `fdr_timing_anomalies.csv` shows `p_value.nunique() == 1`; the FDR computation is not producing meaningfully different values across events | `fdr_timing_anomalies.py` result is statistically invalid | **Resolved (session 63)** — removed `quiet_mask` filter; null now uses all control events; p-value range restored |
+| **Medium** | OQ3 | `gap_hours` = 2.5 for all rows in `timing_anomalies.csv` — fixed constant, not computed per-event | Timing anomaly methodology understates precision; all events treated as identical lag | **Resolved (session 63)** — gap_hours now 2.5 for same_day, 15.0 for prior_day |
+| **Medium** | OQ4 | Bootstrap F1 plateau — F1 range ≈ 0.04 across the full −3.5 to 0.0 threshold sweep; no sharp elbow | Threshold selection (−2.45 / −1.78) is weakly determined by the data; note as calibration limitation in any writeup | **Acknowledged limitation** — SEIBRO activation marginally narrows F1 CI; expanding labels (OQ6) partially helps; with only 30 labels and 1,700+ companies no threshold produces a sharp peak. Document as calibration caveat in any writeup. Not a code fix. |
+| **Low** | OQ5 | Cluster silhouette ≈ 0.25 (k=6,8,10) — no natural cluster structure in KOSDAQ Beneish data | k-means may not be appropriate; consider DBSCAN or hierarchical clustering, or report as null result | **Acknowledged finding** — silhouette ≈ 0.25 across k=6,8,10; no natural cluster structure. Try DBSCAN or hierarchical clustering as alternatives; if they confirm weak structure, report as a market-specific null result. Not a data quality issue. |
+| **Low** | OQ6 | Label set tiny (30 labeled + 20 auto-controls) — RF AUC CI = ±0.192 | Model reliability caveat; expand labels before publishing RF/Lasso findings | Open |
+
+**SEIBRO dependency matrix:**
+
+| Issue | SEIBRO fixes it? | Can fix now? |
+|-------|-----------------|--------------|
+| OQ1   | Yes, directly   | No — external |
+| OQ2   | No              | Yes ✓ |
+| OQ3   | No              | Yes ✓ |
+| OQ4   | Marginally      | Partially (via more labels) |
+| OQ5   | No              | Partially (try other algorithms) |
+| OQ6   | No              | Yes, but labor-intensive |
 
 ## Phase 3 — Continuous Monitoring
 

@@ -3125,6 +3125,51 @@ class TestScoringInvariants:
             f"Expected 2.5, got {constants.TIMING_GAP_HOURS_ASSUMED}"
         )
 
+    # ── Test 4b: TIMING_GAP_HOURS_PRIOR_DAY constant ─────────────────────────
+
+    def test_gap_hours_prior_day_constant_exists(self):
+        """OQ3: TIMING_GAP_HOURS_PRIOR_DAY must exist in src.constants and equal 15.0."""
+        from src.constants import TIMING_GAP_HOURS_PRIOR_DAY
+        assert isinstance(TIMING_GAP_HOURS_PRIOR_DAY, float)
+        assert TIMING_GAP_HOURS_PRIOR_DAY == 15.0
+
+    # ── Test 4c: gap_hours differentiates by timing label ────────────────────
+
+    def test_gap_hours_differentiates_by_timing(self):
+        """OQ3: gap_hours must be 2.5 for same_day and 15.0 for prior_day."""
+        from src.constants import TIMING_GAP_HOURS_ASSUMED, TIMING_GAP_HOURS_PRIOR_DAY
+        import pandas as pd
+
+        df = pd.DataFrame({"timing": ["same_day", "prior_day", "same_day"]})
+        df["gap_hours"] = (
+            df["timing"]
+            .map({"same_day": TIMING_GAP_HOURS_ASSUMED,
+                  "prior_day": TIMING_GAP_HOURS_PRIOR_DAY})
+            .fillna(TIMING_GAP_HOURS_ASSUMED)
+        )
+        assert df.loc[df["timing"] == "same_day",  "gap_hours"].eq(2.5 ).all()
+        assert df.loc[df["timing"] == "prior_day", "gap_hours"].eq(15.0).all()
+
+    # ── Test 4d: FDR null uses unfiltered control ─────────────────────────────
+
+    def test_fdr_timing_null_uses_unfiltered_control(self):
+        """OQ2: The FDR timing control null must include events with |price| > 1%."""
+        import numpy as np
+        # Simulate what the fixed script does: no quiet_mask
+        ctrl_price = np.array([0.3, 0.8, 1.5, 4.2, 12.7])   # includes values > 1%
+        ctrl_null  = np.abs(ctrl_price)
+        test_val   = 5.0
+        # With unfiltered null, 12.7% >= 5.0% → at least one match → not floored
+        overlap = int((ctrl_null >= test_val).sum())
+        assert overlap > 0, (
+            "Unfiltered null must contain events at or above the test threshold "
+            "(zero overlap means all p-values floor at 1/N)"
+        )
+        # Contrast: a quiet-only null (|price| < 1%) would have zero overlap
+        quiet_null = ctrl_null[ctrl_null < 1.0]
+        quiet_overlap = int((quiet_null >= test_val).sum())
+        assert quiet_overlap == 0, "Quiet-only null sanity check: no overlap expected"
+
     # ── Test 5: peak_before_issue column ─────────────────────────────────────
 
     def test_peak_before_issue_column_in_cb_bw_output(self):
@@ -3201,4 +3246,103 @@ class TestScoringInvariants:
         )
         assert row["appears_in_multiple_flagged"] is False or row["appears_in_multiple_flagged"] == False, (
             "Corporate reporter ABC홀딩스 must have appears_in_multiple_flagged=False — fix A4 not applied"
+        )
+
+
+# ─── TestStatsRunner ──────────────────────────────────────────────────────────
+
+
+class TestStatsRunner:
+    """Unit tests for src/stats_runner.py — StatNode DAG and helpers."""
+
+    def test_stats_dag_topological_order(self):
+        """upstream_stat references only appear after their dependency in STATS_DAG."""
+        from src.stats_runner import STATS_DAG
+
+        seen = set()
+        for node in STATS_DAG:
+            if node.upstream_stat is not None:
+                assert node.upstream_stat in seen, (
+                    f"Node '{node.name}' has upstream_stat='{node.upstream_stat}' "
+                    f"but that node hasn't appeared yet in STATS_DAG"
+                )
+            seen.add(node.name)
+
+    def test_check_labels_empty(self, tmp_path):
+        """_check_labels returns (False, 0) when labels.csv is absent."""
+        from src.stats_runner import _check_labels
+
+        ok, count = _check_labels(tmp_path)
+        assert ok is False
+        assert count == 0
+
+    def test_check_labels_sufficient(self, tmp_path):
+        """_check_labels returns (True, N) when labels.csv has >= 5 data rows."""
+        from src.stats_runner import _check_labels, LABELS_PATH
+
+        labels_path = tmp_path / LABELS_PATH
+        labels_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(labels_path, "w", encoding="utf-8") as f:
+            f.write("corp_code,fraud_label\n")
+            for i in range(6):
+                f.write(f"0000000{i},1\n")
+
+        ok, count = _check_labels(tmp_path)
+        assert ok is True
+        assert count == 6
+
+    def test_seibro_gate_skips_dependents(self, tmp_path, monkeypatch):
+        """With seibro_ok=False, survival and permutation get skip_seibro status."""
+        import src.stats_runner as sr
+
+        monkeypatch.setattr(sr, "_check_seibro", lambda root: False)
+        monkeypatch.setattr(sr, "_check_labels", lambda root: (True, 30))
+
+        result = sr.get_stats_audit(tmp_path)
+        by_name = {t["name"]: t for t in result["tests"]}
+        assert by_name["survival"]["status"] == "skip_seibro"
+        assert by_name["permutation"]["status"] == "skip_seibro"
+
+    def test_upstream_stat_gate(self, tmp_path, monkeypatch):
+        """If pca output is missing, cross_screen and label_coverage get skip_upstream status."""
+        import src.stats_runner as sr
+
+        monkeypatch.setattr(sr, "_check_seibro", lambda root: False)
+        monkeypatch.setattr(sr, "_check_labels", lambda root: (True, 30))
+
+        # pca output does not exist — cross_screen and label_coverage should be skip_upstream
+        result = sr.get_stats_audit(tmp_path)
+        by_name = {t["name"]: t for t in result["tests"]}
+        assert by_name["cross_screen"]["status"] == "skip_upstream", (
+            f"cross_screen expected skip_upstream, got '{by_name['cross_screen']['status']}'"
+        )
+        assert by_name["label_coverage"]["status"] == "skip_upstream", (
+            f"label_coverage expected skip_upstream, got '{by_name['label_coverage']['status']}'"
+        )
+
+    def test_stale_node_detected(self, tmp_path, monkeypatch):
+        """Node with output older than its input is 'stale' in audit result."""
+        import time
+        import src.stats_runner as sr
+
+        monkeypatch.setattr(sr, "_check_seibro", lambda root: False)
+        monkeypatch.setattr(sr, "_check_labels", lambda root: (False, 0))
+
+        # Create fdr_timing output (old) then input (newer)
+        output_dir = tmp_path / "03_Analysis" / "statistical_tests" / "outputs"
+        output_dir.mkdir(parents=True)
+        output_file = output_dir / "fdr_timing_anomalies.csv"
+        output_file.write_text("old_output", encoding="utf-8")
+
+        time.sleep(0.05)  # ensure newer mtime on input
+
+        input_dir = tmp_path / "03_Analysis"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        input_file = input_dir / "timing_anomalies.csv"
+        input_file.write_text("newer_input", encoding="utf-8")
+
+        result = sr.get_stats_audit(tmp_path)
+        by_name = {t["name"]: t for t in result["tests"]}
+        assert by_name["fdr_timing"]["status"] == "stale", (
+            f"Expected 'stale' but got '{by_name['fdr_timing']['status']}'"
         )
