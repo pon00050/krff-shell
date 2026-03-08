@@ -45,7 +45,7 @@
 
 ## What's Next
 
-1. **SEIBRO repricing data** — extractor built; ISIN map populated (1,859 ISINs / 656 corps); `holdings_flag` fixed (session 32, now 156 events / 27 double-flagged); SEIBRO API key still pending (re-probed session 32, still `resultCode=99`); once key activates, full activation runbook in KI-012
+1. **SEIBRO repricing data** — API key registered but inactive (resultCode=99, KI-012). Blocking `permutation_repricing_peak.py` and `survival_repricing.py`. SEIBRO provides the only structured source of per-event repricing dates/prices and exercise batches (Flags 1 & 2). For commercial use, KSD 별도이용허락 required (call 051-519-1420). See doc 54 (`54_DART_SEIBRO_Technical_Comparison.md`) for verified signal-by-signal assessment — DART cannot replace SEIBRO for these signals.
 2. **Populate paid-tier tables** — run paid-tier extractors at scale for flagged companies
 3. **Statistical analysis layer** — 10 ISL-grade scripts written; S1–S5 complete (session 24); findings in `FINDINGS.md`
 
@@ -116,7 +116,7 @@
 
 | ID | Description | Blocked by |
 |---|---|---|
-| S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation only (ISIN map blocker resolved — see S6a above) |
+| S6 | Run `extract_seibro_repricing.py` → re-run `permutation_repricing_peak.py` + `survival_repricing.py` | SEIBRO API key activation only |
 
 ## Phase 3 — Continuous Monitoring
 
