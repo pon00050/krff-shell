@@ -159,6 +159,17 @@ Deferred Ch. 8 additions (future session):
 - OOB score as bootstrap-consistent internal estimate (`oob_score=True` in `RandomForestClassifier`)
 - Importance stability across seeds (Spearman rank correlation across N `random_state` values)
 
+## Chapter 12 Methodological Additions — Session 67
+
+Two Chapter 12 (ISL — Unsupervised Learning) outputs added (session 67, Mar 9 2026).
+
+| # | Addition | Script | Output | Detail |
+|---|---------|--------|--------|--------|
+| 8 | PCA loading interpretation | `pca_beneish.py` | `pca_top_loadings.csv` | `pca_top_loadings()` helper; pure function; top-3 features per PC by |loading|; replaces hardcoded PC3 comment; 24 rows (8 PCs × 3 features) |
+| 9 | GMM AIC/BIC vs k-means | `cluster_peers.py` | `cluster_gmm_fit.csv` | `gmm_aic_bic()` helper; fits GMM at K_VALUES=[6,8,10]; reports AIC/BIC per k; directly addresses Problem 6 (k-means wrong for hyperspherical data) |
+
+6 new invariant tests added (282 total). Both scripts need re-run to generate new outputs.
+
 ## Output Quality Issues — Session 62 Review
 
 Identified by `/review-pipeline` on 2026-03-08. Address before next statistical test run.

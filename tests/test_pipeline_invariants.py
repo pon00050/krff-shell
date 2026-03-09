@@ -3734,3 +3734,89 @@ class TestRFImportanceComparison:
         features = [f"f{i}" for i in range(12)]
         df = mod.compare_importance_methods(features, rf_imp, perm_imp)
         assert len(df) == 12, f"Expected 12 rows, got {len(df)}"
+
+
+class TestPCATopLoadings:
+    """pca_top_loadings() must extract top features per PC correctly."""
+
+    def _load_module(self):
+        from importlib.util import spec_from_file_location, module_from_spec
+        p = ROOT / "03_Analysis" / "statistical_tests" / "pca_beneish.py"
+        spec = spec_from_file_location("pca_beneish", p)
+        mod = module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_top_loadings_columns(self):
+        """Output must have exactly ['pc', 'feature', 'loading', 'abs_loading'] columns."""
+        mod = self._load_module()
+        rng = np.random.default_rng(0)
+        comps = rng.standard_normal((4, 6))   # 4 PCs, 6 features
+        features = [f"f{i}" for i in range(6)]
+        df = mod.pca_top_loadings(comps, features, n_top=2)
+        assert set(df.columns) == {"pc", "feature", "loading", "abs_loading"}, (
+            f"Column mismatch: {set(df.columns)}"
+        )
+
+    def test_top_loadings_row_count(self):
+        """Must return exactly n_pcs × n_top rows."""
+        mod = self._load_module()
+        rng = np.random.default_rng(1)
+        comps = rng.standard_normal((8, 8))   # 8 PCs (full Beneish), 8 features
+        features = [f"f{i}" for i in range(8)]
+        df = mod.pca_top_loadings(comps, features, n_top=3)
+        assert len(df) == 24, f"Expected 24 rows (8 PCs × 3), got {len(df)}"
+
+    def test_top_loadings_sorted_within_pc(self):
+        """Within each PC, rows must be ordered by abs_loading descending."""
+        mod = self._load_module()
+        rng = np.random.default_rng(2)
+        comps = rng.standard_normal((3, 6))
+        features = [f"f{i}" for i in range(6)]
+        df = mod.pca_top_loadings(comps, features, n_top=3)
+        for pc, grp in df.groupby("pc", sort=False):
+            vals = grp["abs_loading"].tolist()
+            assert vals == sorted(vals, reverse=True), (
+                f"PC {pc} abs_loading not descending: {vals}"
+            )
+
+
+class TestGMMAICBIC:
+    """gmm_aic_bic() must return well-formed AIC/BIC fit statistics."""
+
+    def _load_module(self):
+        from importlib.util import spec_from_file_location, module_from_spec
+        p = ROOT / "03_Analysis" / "statistical_tests" / "cluster_peers.py"
+        spec = spec_from_file_location("cluster_peers", p)
+        mod = module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_gmm_columns(self):
+        """Output must have exactly ['k', 'gmm_aic', 'gmm_bic'] columns."""
+        mod = self._load_module()
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((60, 4))
+        df = mod.gmm_aic_bic(X, [2, 3])
+        assert set(df.columns) == {"k", "gmm_aic", "gmm_bic"}, (
+            f"Column mismatch: {set(df.columns)}"
+        )
+
+    def test_gmm_row_count(self):
+        """Must return exactly one row per k value."""
+        mod = self._load_module()
+        rng = np.random.default_rng(1)
+        X = rng.standard_normal((60, 4))
+        df = mod.gmm_aic_bic(X, [2, 4, 6])
+        assert len(df) == 3, f"Expected 3 rows, got {len(df)}"
+
+    def test_gmm_bic_finite(self):
+        """All BIC (and AIC) values must be finite — no NaN or inf."""
+        mod = self._load_module()
+        rng = np.random.default_rng(2)
+        X = rng.standard_normal((60, 4))
+        df = mod.gmm_aic_bic(X, [2, 3, 4])
+        assert df["gmm_bic"].notna().all(), "gmm_bic contains NaN"
+        assert np.isfinite(df["gmm_bic"].values).all(), "gmm_bic contains inf"
+        assert df["gmm_aic"].notna().all(), "gmm_aic contains NaN"
+        assert np.isfinite(df["gmm_aic"].values).all(), "gmm_aic contains inf"
