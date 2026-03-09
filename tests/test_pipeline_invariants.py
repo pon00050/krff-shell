@@ -3896,5 +3896,23 @@ class TestBonferroniCompare:
         bh_n   = df["bh_reject"].sum()
         bonf_n = df["bonferroni_reject"].sum()
         assert bh_n >= bonf_n, (
-            f"BH must reject ≥ Bonferroni: BH={bh_n}, Bonferroni={bonf_n}"
+            f"BH must reject >= Bonferroni: BH={bh_n}, Bonferroni={bonf_n}"
+        )
+
+    def test_bh_reject_is_boolean(self):
+        """bh_reject column must be boolean dtype — not float q-values cast to bool.
+
+        Guards against KI-037: multipletests() position-1 return is pvals_corrected
+        (float), not the reject boolean (position 0). Calling .astype(bool) on floats
+        makes all non-zero values True, giving spuriously high rejection counts.
+        """
+        mod = self._load_module()
+        # Use all-large p-values: correct BH should reject 0; float-cast would reject all
+        pvals = np.array([0.5, 0.6, 0.7, 0.8, 0.9])
+        df = mod.bonferroni_compare(pvals, alpha=0.05)
+        assert df["bh_reject"].dtype == bool or df["bh_reject"].dtype == np.bool_, (
+            f"bh_reject must be bool dtype, got {df['bh_reject'].dtype}"
+        )
+        assert df["bh_reject"].sum() == 0, (
+            f"All large p-values should give 0 BH rejections, got {df['bh_reject'].sum()}"
         )
