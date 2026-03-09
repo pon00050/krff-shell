@@ -3356,6 +3356,8 @@ class TestClusterBootstrap:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "bootstrap_threshold.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("bootstrap_threshold", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3423,6 +3425,8 @@ class TestAutoControls:
         """Load a stats script with DATA patched to tmp_path."""
         import importlib.util
         p = ROOT / "03_Analysis" / "statistical_tests" / module_path
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = importlib.util.spec_from_file_location(module_path.replace(".py", ""), p)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3522,6 +3526,8 @@ class TestGroupedCV:
         """lasso_beneish.py must pass groups= to the cross-validator."""
         import importlib.util
         p = ROOT / "03_Analysis" / "statistical_tests" / "lasso_beneish.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         src = p.read_text(encoding="utf-8")
         assert "GroupKFold" in src, (
             "lasso_beneish.py does not use GroupKFold — ungrouped CV still active"
@@ -3534,6 +3540,8 @@ class TestGroupedCV:
         """rf_feature_importance.py must pass groups= to cross_val_score."""
         import importlib.util
         p = ROOT / "03_Analysis" / "statistical_tests" / "rf_feature_importance.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         src = p.read_text(encoding="utf-8")
         assert "GroupKFold" in src, (
             "rf_feature_importance.py does not use GroupKFold — ungrouped CV still active"
@@ -3551,6 +3559,8 @@ class TestLassoPath:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "lasso_beneish.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("lasso_beneish", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3601,6 +3611,8 @@ class TestEPVCheck:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "lasso_beneish.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("lasso_beneish", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3634,6 +3646,8 @@ class TestRFEPVCheck:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "rf_feature_importance.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("rf_feature_importance", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3671,6 +3685,8 @@ class TestRFImportanceComparison:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "rf_feature_importance.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("rf_feature_importance", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3742,6 +3758,8 @@ class TestPCATopLoadings:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "pca_beneish.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("pca_beneish", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3787,6 +3805,8 @@ class TestGMMAICBIC:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "cluster_peers.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("cluster_peers", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3828,6 +3848,8 @@ class TestPi0Estimate:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "fdr_timing_anomalies.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("fdr_timing_anomalies", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -3864,6 +3886,8 @@ class TestBonferroniCompare:
     def _load_module(self):
         from importlib.util import spec_from_file_location, module_from_spec
         p = ROOT / "03_Analysis" / "statistical_tests" / "fdr_disclosure_leakage.py"
+        if not p.exists():
+            pytest.skip(f"{p.name} not available (private directory)")
         spec = spec_from_file_location("fdr_disclosure_leakage", p)
         mod = module_from_spec(spec)
         spec.loader.exec_module(mod)
