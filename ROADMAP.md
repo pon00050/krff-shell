@@ -286,6 +286,8 @@ No code execution required from end users — they read, not operate.
 | W3 | Company pages with signal history and report links | Planned |
 | W4 | Alert feed with severity levels and source links | Planned |
 | W5 | Admin review layer (false-positive flagging, label staging) | Planned |
+| W6 | Natural language query interface (DuckDB + LLM → SQL) | Planned |
+| W7 | AI-agent-only content model (agents post signals/summaries autonomously) | Planned |
 
 ### W1 — Public Demo MVP
 
@@ -314,12 +316,97 @@ Design principles:
 - Public language: "signal", "anomaly", "pattern" — never "fraud confirmed" or "criminal"
 - Infrastructure works without AI; AI enhances triage and summarization but does not gate the pipeline
 
+### W6 — Natural Language Query Interface
+
+Goal: Let users query the corpus in plain Korean or English without knowing DuckDB or the parquet schema.
+
+Architecture: User types "Show me everything suspicious about 피씨엘 in 2021" → LLM translates to DuckDB SQL against parquet files → results returned as structured JSON → rendered as evidence packet (signals + citations).
+
+Implementation path:
+- DuckDB connection factory already exists in `src/db.py`
+- LLM routing: `claude-haiku-4-5` for query classification + SQL generation; `claude-sonnet-4-6` for result synthesis
+- Schema context: Pass parquet column names + sample rows in system prompt with `cache_control: ephemeral`
+- Safety: SQL is read-only; no write access to parquet; all queries parameterized
+- Fallback: If LLM-generated SQL fails validation, return a structured error (not a crash)
+
+### W7 — AI-Agent-Only Content Model
+
+Goal: The public website generates its own content autonomously. Human posts nothing — agents post signals, summaries, and anomaly alerts on a schedule.
+
+Concept: The website is not a blog. It is a continuously updated surveillance feed. A publisher agent runs weekly, checks for new flags (new Beneish threshold crossings, new CB/BW events, new timing anomalies), generates a 200-word summary per new signal in safe language (no fraud allegations, source citations only), and posts it to the website without human review.
+
+Human role: Review and suppress (not review and approve). The adversary/refutation agent runs first — it tries to find benign explanations. If no benign explanation exists, the publisher agent posts. If the adversary agent finds a benign explanation, the signal is held for human review.
+
+**Why this matters:** Collapses the analyst team requirement to zero for routine updates. One person maintains the infrastructure; agents maintain the content. This is the "self-updating intelligence platform" model — the system generates its own distribution.
+
 Multi-agent design (Phase 4 target):
 - Ingestion/triage agent — classify relevance, identify corp_code
 - Analysis operator agent — call existing scripts via fixed action menu
 - QA/validation agent — check output completeness and publish-safety
 - Publisher agent — generate website-ready summaries (signal language only)
 - Adversary/refutation agent — actively find benign explanations; challenge severity before publication
+
+## Phase 5 — Data Expansion and Spatial Analysis
+
+*Identified March 2026. Not sequenced — depends on Phase 3/4 completion and SEIBRO activation.*
+
+### 5A — Additional Korean Open Datasets
+
+Eight Korean public datasets identified as high-value for pipeline enrichment. See `00_Reference/2_Data/60_Additional_Korean_Open_Datasets.md` for full detail, access paths, and integration priority.
+
+| Dataset | Signal added | Blocking dependency |
+|---|---|---|
+| FSC enforcement actions | Ground-truth label expansion | None — scraping |
+| KONEPS government procurement | Revenue quality, political connection | ID bridge (사업자등록번호) |
+| Court insolvency filings | Model validation (ex-post) | None |
+| KoTaP tax avoidance panel | Earnings management enrichment | Academic access |
+| Korea Customs trade data | Fake export revenue detection | ID bridge |
+| KRED macro panel | Cyclicality research | None |
+| KOSIS regional statistics | Spatial analysis (prerequisite) | Geocoding |
+| KOFIA bond data | CB/BW complement | None |
+
+**Key infrastructure prerequisite:** Unified corporate identifier table linking `corp_code` ↔ `stock_code` ↔ `사업자등록번호` ↔ `법인등록번호` ↔ ISIN. The 사업자등록번호 is available in DART company profiles (`company.json`) and can be extracted in bulk.
+
+### 5C — Officer Network Dataset (Standalone)
+
+Publish `officer_network_panel.parquet` as a standalone open dataset: all DART officer holding disclosures, normalized and deduplicated, with entity resolution across name variants. Enables any researcher to reconstruct the officer-company graph without running the full pipeline.
+
+**Value:** No equivalent dataset exists publicly for Korean markets. Cross-company officer tracking is the data primitive underlying the NTS ₩260B manipulation network recovery (March 2026).
+
+### 5D — Historical Ticker Change Dataset
+
+Publish a full history of KOSDAQ/KOSPI ticker changes: relisting events, SPAC mergers, name changes with effective dates. Currently `corp_ticker_map.parquet` has point-in-time data; this extends it to a temporal table.
+
+**Value:** Without ticker change history, any time-series analysis that joins on ticker will silently misattribute data across corporate events. No free Korean equivalent exists. Essential for any researcher doing multi-year event studies on KOSDAQ.
+
+### 5E — Corporate Action Timeline
+
+Publish a normalized corporate action table: CB/BW issuances, rights offerings, stock splits, reverse splits, tender offers — all from DART filings, joined to price/volume data with ±60 day windows. One row per event, normalized event type, consistent date formatting.
+
+**Value:** Currently cb_bw_events.parquet covers CB/BW only. A full corporate action timeline enables any capital markets researcher to run event studies without building the DART extraction layer from scratch.
+
+### 5F — KONEPS Procurement Exposure Dataset
+
+For all KOSDAQ companies with a BRN bridge (extractable from DART company.json), query KONEPS (나라장터) procurement records and publish the results: total government contract value per company per year, contract types, counterparty agencies.
+
+**Value:** Enables fake government revenue detection. A company reporting rapidly growing government revenue that does not appear in KONEPS records is a high-priority anomaly. Requires BRN extraction (one field from DART) + KONEPS API integration.
+
+**Blocking dependency:** BRN extraction from DART company.json (Phase 5A prerequisite, zero marginal cost). KONEPS API feasibility confirmed separately.
+
+### 5B — Spatial Analysis Layer
+
+Map accounting anomaly density geographically across Korea.
+
+**Concept:** Geocode company headquarters (from DART registration data), join to KOSIS regional economic indicators, render Beneish flag density by region. Reveals whether manipulation clusters by geography, industry zone, or economic condition — a systemic insight unavailable from company-level analysis alone.
+
+**Stack:** `geopandas` / `shapely` / `pydeck` or `kepler.gl` on top of existing parquet outputs.
+
+**Research questions:**
+- Do Seoul tech firms, Busan manufacturing, and Incheon logistics show distinct manipulation profiles?
+- Does regional economic stress (unemployment, credit conditions) predict local flag density?
+- Are CB/BW anomaly clusters geographically co-located with known regulatory blind spots?
+
+**Prerequisites:** KOSIS regional data integration (Phase 5A), geocoding of DART company addresses.
 
 ## Open Backlog
 
