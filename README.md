@@ -22,54 +22,75 @@ This project builds that infrastructure layer — so that researchers, journalis
 
 ## Current State / 현재 상태
 
-**Milestone 1 complete. Milestones 2–4 data extraction complete — all four milestones runnable.**
+**Milestones 1–4 complete. All four analysis milestones runnable. FastAPI web/API layer and MCP server added.**
 
-**마일스톤 1 완료. 마일스톤 2–4 데이터 수집 완료 — 4개 마일스톤 모두 실행 가능.**
+**마일스톤 1–4 완료. 4개 마일스톤 모두 실행 가능. FastAPI 웹/API 레이어 및 MCP 서버 추가.**
 
 | Output | Location | EN | 한국어 |
 |---|---|---|---|
 | `beneish_scores.csv` | `03_Analysis/` | Ranked anomaly table with DART links — main deliverable | DART 링크 포함 이상 징후 순위표 — 주요 산출물 |
-| `beneish_scores.parquet` | `01_Data/processed/` | All 8 M-Score components, sector percentiles, CFS/OFS provenance | M-Score 8개 구성 요소, 섹터 백분위, CFS/OFS 출처 |
-| `company_financials.parquet` | `01_Data/processed/` | 5-year financials, all KOSDAQ companies | 5개년 재무제표, 코스닥 전 상장사 |
-| `cb_bw_events.parquet` | `01_Data/processed/` | CB/BW issuance events from DART DS005 | CB/BW 발행 이벤트, DART DS005 |
+| `beneish_scores.parquet` | `01_Data/processed/` | All 8 M-Score components, 2018–2023, sector percentiles, CFS/OFS provenance | M-Score 8개 구성 요소, 2018–2023, 섹터 백분위, CFS/OFS 출처 |
+| `company_financials.parquet` | `01_Data/processed/` | 2017–2023 financials, all KOSDAQ companies | 2017–2023 재무제표, 코스닥 전 상장사 |
+| `cb_bw_events.parquet` | `01_Data/processed/` | CB/BW issuance events — 11 cols including issue_amount, refixing_floor, maturity_date, board_date, warrant_separable | CB/BW 발행 이벤트 — 발행금액·리픽싱하한·만기일·이사회일·분리형 여부 포함 11개 컬럼 |
 | `price_volume.parquet` | `01_Data/processed/` | OHLCV price/volume windows around CB/BW events | CB/BW 이벤트 전후 OHLCV 주가/거래량 |
 | `corp_ticker_map.parquet` | `01_Data/processed/` | corp_code ↔ ticker mapping | corp_code ↔ 종목코드 매핑 |
 | `officer_holdings.parquet` | `01_Data/processed/` | Officer holding changes | 임원 보유 주식 변동 |
-| `disclosures.parquet` | `01_Data/processed/` | DART filing listings for timing analysis | DART 공시 목록 — 공시 시점 분석용 |
+| `disclosures.parquet` | `01_Data/processed/` | 271,504 DART filings across 921 corps — wired into pipeline automatically | DART 공시 목록 271,504건, 921개사 — 파이프라인에 자동 연결 |
 | `major_holders.parquet` | `01_Data/processed/` | 5%+ ownership threshold filings from DART majorstock.json | 대량보유상황보고서 — 5% 이상 지분 신고 이력 |
 | `bondholder_register.parquet` | `01_Data/processed/` | CB bondholder names and face values from 사채권자명부 sub-documents | CB 사채권자명부 — 권리자명·채권금액 |
 | `revenue_schedule.parquet` | `01_Data/processed/` | Revenue by customer/segment from 매출명세서 in 사업보고서 | 매출명세서 — 고객·품목별 매출 |
+| `bond_isin_map.parquet` | `01_Data/processed/` | 1,859 CB/BW ISINs mapped to 656 corp_codes via FSC API | FSC API로 수집한 CB/BW ISIN 1,859건 — 656개사 연결 |
 | `dart_xbrl_crosswalk.csv` | `tests/fixtures/` | XBRL element → variable mapping; audit trail | XBRL 요소 → 재무 변수 매핑; 감사 추적 |
 | [`beneish_viz.html` ↗](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) | `03_Analysis/` | Self-contained visual summary of Phase 1 results (5 Plotly charts) | Phase 1 결과 시각적 요약 — 5개 Plotly 차트, 단독 실행 가능 HTML |
 | `<corp_code>_report.html` | `03_Analysis/reports/` | Per-company forensic HTML report (all 4 milestones + AI synthesis) | 기업별 포렌식 HTML 보고서 |
 
 **Visual summary (no Python required):** [beneish_viz.html — Phase 1 결과 보기](https://raw.githack.com/pon00050/kr-forensic-finance/master/03_Analysis/beneish_viz.html) — interactive Plotly charts, no Python required. / Python 없이 바로 보기.
 
-**All four milestones are runnable now.** Run `extract_disclosures.py` first to populate `disclosures.parquet` for Milestone 3.
-
-**4개 마일스톤 모두 실행 가능.** 마일스톤 3용 `disclosures.parquet`는 `extract_disclosures.py`로 추출.
-
 ## Quickstart / 빠르게 시작하기
 
 ```bash
 git clone https://github.com/pon00050/kr-forensic-finance
 cd kr-forensic-finance
-uv sync
+uv sync                        # production dependencies
+uv sync --extra dev            # + dev/test dependencies (needed to run tests)
 cp .env.example .env           # add DART API key / DART API 키 입력 (free / 무료: opendart.fss.or.kr)
 ```
 
-**Option A — `krff` CLI (v1.5.0+):**
+**Option A — `krff` CLI:**
+
+| Command | Description |
+|---|---|
+| `krff run` | ETL pipeline — DART extraction + transform |
+| `krff refresh` | Full pipeline + all 4 analysis milestones in one command |
+| `krff analyze` | Print beneish_scores.parquet summary |
+| `krff charts` | Write 03_Analysis/beneish_viz.html |
+| `krff status` | Artifact inventory (rows, sizes, dates) |
+| `krff status -v` | + DART run summary |
+| `krff quality` | Data quality metrics (null rates, coverage) |
+| `krff audit` | Pipeline freshness check — exits 1 if stale |
+| `krff stats` | Run stale statistical tests (14-node DAG) |
+| `krff report <corp_code>` | Generate per-company HTML report |
+| `krff batch_report` | Generate reports for all flagged companies |
+| `krff serve` | Start FastAPI + MCP server on :8000 |
+| `krff queue` / `krff surface` / `krff hide` | Review queue management |
+| `krff version` | Print version |
+| `krff --help` | List all commands |
+
 ```bash
+# Typical first run
+krff audit                     # check pipeline freshness before running
 krff run --market KOSDAQ --start 2019 --end 2023
 python 03_Analysis/beneish_screen.py   # compute M-scores → beneish_scores.parquet
-krff analyze                           # print score summary
-krff charts                            # write 03_Analysis/beneish_viz.html
-krff status                            # show artifact inventory (rows, sizes, dates)
-krff run --stage cb_bw --backend fdr    # use FinanceDataReader backend for OHLCV
-krff serve                             # start HTTP API on http://127.0.0.1:8000 (Swagger UI at /docs)
-krff monitor --once                    # poll data sources once (Phase 3 stub)
-krff alerts                            # show recent alerts (Phase 3 stub)
-krff --help                            # list all commands
+krff analyze                   # print score summary
+krff charts                    # write 03_Analysis/beneish_viz.html
+```
+
+**MCP server (for Claude Code / Claude Desktop):**
+```bash
+krff serve                     # starts REST API + MCP at http://127.0.0.1:8000
+# Claude Code auto-connects via .mcp.json (included in repo)
+# Or add manually:
+claude mcp add --transport http kr-financial-statements http://localhost:8000/mcp/
 ```
 
 **Option B — direct scripts (unchanged):**
@@ -87,8 +108,7 @@ python 03_Analysis/beneish_screen.py
 
 **Smoke test (5 companies, ~3 min):**
 ```bash
-krff run --market KOSDAQ --start 2021 --end 2023 --sample 5 --sleep 0.1 --max-minutes 3
-python 03_Analysis/beneish_screen.py
+krff refresh --sample 5 --sleep 0.1 --max-minutes 3
 ```
 
 ## Limitations and Disclaimer / 한계 및 면책 고지
@@ -122,6 +142,47 @@ All data is publicly available and free. 사용된 데이터는 모두 무료로
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md)
 
+### Web API + MCP Server
+
+`krff serve` starts a FastAPI application at `http://localhost:8000` that exposes both a REST API and an MCP (Model Context Protocol) server — a standard interface that lets Claude and other AI clients call tools directly against live pipeline data.
+
+**REST API (`http://localhost:8000`):**
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/status` | Artifact inventory (same as `krff status`) |
+| `GET /api/quality` | Data quality metrics |
+| `GET /api/companies/{corp_code}/summary` | All signals for one company |
+| `GET /api/companies/{corp_code}/report` | Trigger per-company HTML report generation |
+| `GET /api/alerts` | Recent anomaly alerts |
+| `GET /api/monitor/status` | Monitor pipeline health |
+
+Swagger UI at `/docs`. Web routes at `/`, `/demo`, `/about`, `/datasets`, `/contact`, `/privacy`, `/terms`.
+
+**MCP Server (`http://localhost:8000/mcp/`):**
+
+10 tools are available to any MCP-compatible client (Claude Code, Claude Desktop, etc.):
+
+| Tool | Description |
+|---|---|
+| `lookup_corp_code` | Name or ticker → corp_code. **Call this first** — all other tools require corp_code. |
+| `get_company_summary` | All signals for one company in one call |
+| `get_beneish_scores` | M-Score history with all 8 components (2018–2023) |
+| `get_cb_bw_events` | CB/BW events with manipulation flag counts |
+| `get_price_volume` | OHLCV for a date range (paginated) |
+| `get_officer_holdings` | Officer holding changes from DART |
+| `get_timing_anomalies` | Disclosure timing vs. price/volume anomalies |
+| `get_major_holders` | 5%+ block-holding filings (대량보유) |
+| `get_officer_network` | Cross-company officer centrality |
+| `search_flagged_companies` | Ranked anomaly screen by M-Score (paginated) |
+
+Connect from Claude Code:
+```bash
+krff serve   # must be running first
+# Auto-connects via .mcp.json (included in repo)
+# Or manually: claude mcp add --transport http kr-financial-statements http://localhost:8000/mcp/
+```
+
 ### Folder Structure
 
 ```
@@ -132,6 +193,8 @@ kr-forensic-finance/
 ├── LICENSE
 ├── pyproject.toml
 ├── cli.py                         krff CLI entry point
+├── app.py                         FastAPI app — REST API + MCP server (krff serve)
+├── .mcp.json                      MCP client config (Claude Code / Claude Desktop)
 ├── .env.example                   API keys + optional cloud storage template
 ├── 00_Reference/                  Local reference docs (not committed)
 ├── 01_Data/
@@ -158,24 +221,42 @@ kr-forensic-finance/
 │   ├── beneish_viz.py             Visual summary → beneish_viz.html
 │   ├── beneish_viz.html           Generated output — open in any browser
 │   ├── phase1_research_questions.py  Open analytical threads from Phase 1
-│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (Marimo app; run via run_cb_bw_timelines.py — Marimo UI optional)
-│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (Marimo app; run via run_timing_anomalies.py — Marimo UI optional)
-│   ├── officer_network.py         Milestone 4 — Officer graph (Marimo app; run via run_officer_network.py — Marimo UI optional)
+│   ├── cb_bw_timelines.py         Milestone 2 — CB/BW event chains (Marimo app; run via run_cb_bw_timelines.py)
+│   ├── timing_anomalies.py        Milestone 3 — Disclosure timing (Marimo app; run via run_timing_anomalies.py)
+│   ├── officer_network.py         Milestone 4 — Officer graph (Marimo app; run via run_officer_network.py)
 │   ├── run_cb_bw_timelines.py     Standalone runner → cb_bw_summary.csv
 │   ├── run_timing_anomalies.py    Standalone runner → timing_anomalies.csv
 │   ├── run_officer_network.py     Standalone runner → centrality_report.csv
+│   ├── _scoring.py                Shared CB/BW scoring logic
+│   ├── statistical_tests/         10 statistical validation scripts (local only)
+│   ├── officer_network/           Output: centrality_report.csv
+│   ├── reports/                   Generated per-company HTML reports (gitignored)
 │   └── company_dives/             Per-company forensic scripts (local only, not committed)
 ├── src/
-│   ├── __init__.py                Package init
-│   ├── pipeline.py                Pipeline wrapper for CLI/API callers
+│   ├── __init__.py
+│   ├── _paths.py                  Centralized path constants
 │   ├── analysis.py                Beneish screen wrapper
+│   ├── audit.py                   Pipeline freshness DAG (krff audit)
 │   ├── charts.py                  Plotly chart generation
-│   └── report.py                  Per-company HTML report generator (krff report)
+│   ├── constants.py               Threshold + flag literals
+│   ├── data_access.py             Parquet/CSV loader layer
+│   ├── db.py                      DuckDB connection factory
+│   ├── mcp_server.py              FastMCP server — 10 tools
+│   ├── mcp_utils.py               JSON serialization helpers
+│   ├── models.py                  Pydantic response models
+│   ├── pipeline.py                Pipeline wrapper for CLI/API
+│   ├── quality.py                 Data quality metrics (krff quality)
+│   ├── report.py                  Per-company HTML report generator
+│   ├── review.py                  Visibility queue (public/paid tiers)
+│   ├── stats_runner.py            14-node STATS_DAG orchestrator
+│   └── status.py                  Artifact inventory (krff status)
 └── tests/
     ├── conftest.py                Shared fixtures (sys.path setup)
     ├── test_pipeline_invariants.py Schema/logic tests (run any time)
     ├── test_acceptance_criteria.py End-to-end checks (after pipeline)
     ├── test_cli.py                CLI smoke tests
+    ├── test_e2e_synthetic.py      End-to-end tests with synthetic data
+    ├── test_mcp_server.py         MCP tool tests (skip when parquets absent)
     └── top50_spot_check.csv       Spot-check reference data
 ```
 
@@ -214,16 +295,16 @@ All three support `--force`, `--sample N`, `--sleep S`, `--max-minutes M`. HTML 
 | `--max-minutes N` | Hard deadline guard; exits cleanly after N minutes |
 | `--sleep S` | Inter-request sleep in seconds (default 0.5; use 0.1 for smoke tests) |
 | `--force` | Extract stage: re-fetch raw files (company_list.parquet, wics.parquet, etc.). Transform stage: delete and rebuild `company_financials.parquet`. |
-| `--stage dart\|transform\|cb_bw` | Run a single stage only (default: dart + transform) |
+| `--stage dart\|transform\|cb_bw\|beneish\|analysis` | Run a single stage only (default: dart + transform) |
 
 ### Testing
 
 ```bash
-pytest tests/ -v                              # Full suite (168 tests)
-pytest tests/test_pipeline_invariants.py tests/test_e2e_synthetic.py -v  # No pipeline data needed
+uv run python -m pytest tests/ -v                                               # 301 tests
+uv run python -m pytest tests/test_pipeline_invariants.py tests/test_e2e_synthetic.py -v  # no pipeline data needed
 ```
 
-Test documentation is maintained locally in `00_Reference/`.
+Data-dependent tests auto-skip on CI (no parquets present); all 301 tests run locally after a full pipeline run.
 
 ### Output Schemas
 
@@ -244,8 +325,6 @@ Test documentation is maintained locally in `00_Reference/`.
 | `dart_link` | Direct URL to company's annual report on DART |
 | `extraction_date` | Date this row's data was extracted from DART |
 
-Full schema spec is maintained locally in `00_Reference/7_Projects/17_MVP_Requirements.md`.
-
 **`top50_spot_check.csv`** (`tests/`) — Top 50 companies by M-Score with `corp_code`, `ticker`, `company_name`, `year`, `m_score`, `flag`.
 
 ### Generating Per-Company Reports
@@ -253,6 +332,7 @@ Full schema spec is maintained locally in `00_Reference/7_Projects/17_MVP_Requir
 ```bash
 krff report 01051092              # → 03_Analysis/reports/01051092_report.html
 krff report 01051092 --skip-claude  # skip AI synthesis (no API key needed)
+krff batch_report                 # generate reports for all flagged companies
 ```
 
 Reports are self-contained HTML files. Run pipeline and analysis scripts first, then generate:
@@ -268,11 +348,10 @@ krff report <corp_code>
 
 Set `ANTHROPIC_API_KEY` in `.env` to enable the AI synthesis section (claude-sonnet-4-6).
 
-**Data coverage:** Reports reflect 2019–2023 data. Re-run the pipeline to update.
+**Data coverage:** Reports reflect 2017–2023 data. Re-run the pipeline to update.
 
 ### Further Reading
 
 Architecture notes, API research findings, and methodology documentation are maintained locally in `00_Reference/` (not committed to the public repository). Clone the repo and run the pipeline — the code is self-documenting.
 
 S3-compatible cloud storage is optional — all scripts fall back to local files.
-
