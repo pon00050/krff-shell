@@ -296,3 +296,22 @@ def test_audit_verbose_flag_exists():
     result = runner.invoke(app, ["audit", "--help"])
     assert result.exit_code == 0
     assert "--verbose" in _strip_ansi(result.output)
+
+
+# ─── Stats command tests ──────────────────────────────────────────────────────
+
+
+def test_stats_dry_run():
+    """krff stats --dry-run exits 0 and shows status icons without executing scripts."""
+    result = runner.invoke(app, ["stats", "--dry-run"])
+    assert result.exit_code == 0, f"Expected exit 0:\n{result.output}\n{result.exception}"
+    assert any(icon in result.output for icon in ("⚠", "✓", "✗", "⊘")), (
+        f"Expected at least one status icon in output:\n{result.output}"
+    )
+
+
+def test_stats_in_help():
+    """krff --help output contains 'stats'."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "stats" in result.output, f"Expected 'stats' in --help output:\n{result.output}"

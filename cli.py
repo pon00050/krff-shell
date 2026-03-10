@@ -152,6 +152,7 @@ def report(
     corp_code: str = typer.Argument(..., help="DART 8-digit corp code, e.g. 01051092"),
     output_dir: Optional[Path] = typer.Option(None, help="Output dir (default: 03_Analysis/reports/)"),
     skip_claude: bool = typer.Option(False, "--skip-claude", help="Skip Claude API synthesis"),
+    force: bool = typer.Option(False, "--force", help="Re-queue even if previously rejected"),
 ) -> None:
     """Generate a self-contained HTML forensic report for one company."""
     corp_code = corp_code.strip()
@@ -169,6 +170,23 @@ def report(
     except Exception as exc:
         typer.echo(f"Report generation failed: {exc}", err=True)
         raise typer.Exit(code=1)
+
+    # Auto-queue for human review after successful generation
+    try:
+        from src.review import queue_add
+        # Look up corp_name from corp_ticker_map if available
+        corp_name = ""
+        cmap = _ANALYSIS_DIR.parent / "01_Data" / "processed" / "corp_ticker_map.parquet"
+        if cmap.exists():
+            import pandas as pd
+            df = pd.read_parquet(cmap, columns=["corp_code", "corp_name"])
+            row = df[df["corp_code"].astype(str).str.zfill(8) == corp_code]
+            if not row.empty:
+                corp_name = str(row.iloc[0]["corp_name"])
+        queue_add(corp_code, corp_name, force=force)
+        typer.echo(f"Queued {corp_code} ({corp_name or '—'}) for review → run 'krff queue' to see pending")
+    except Exception as exc:
+        typer.echo(f"Warning: could not queue for review: {exc}", err=True)
 
 
 @app.command()
@@ -208,6 +226,70 @@ def audit(
         raise typer.Exit(code=1)
 
 
+def _run_script(label: str, script: Path) -> None:
+    """Run a Python script as a subprocess; raise typer.Exit on failure."""
+    import subprocess
+
+    typer.echo(f"\n--- {label} ---")
+    result = subprocess.run([sys.executable, str(script)], cwd=str(Path(__file__).parent))
+    if result.returncode != 0:
+        typer.echo(f"ERROR: {label} exited with code {result.returncode}", err=True)
+        raise typer.Exit(code=result.returncode)
+
+
+@app.command()
+def stats(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would run without executing"),
+    run_all: bool = typer.Option(False, "--all", help="Run all eligible tests regardless of staleness"),
+    only: Optional[list[str]] = typer.Option(None, "--only", help="Run only these named tests"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show input paths for stale tests"),
+) -> None:
+    """Run stale statistical tests in topological order."""
+    from src.stats_runner import get_stats_audit, format_stats_audit, STATS_DAG, _DAG_BY_NAME
+
+    root = Path(__file__).parent
+    result = get_stats_audit(root)
+
+    typer.echo(format_stats_audit(result, verbose=verbose))
+
+    if dry_run:
+        raise typer.Exit(code=0)
+
+    # Build run list
+    if run_all:
+        to_run = [
+            t["name"] for t in result["tests"]
+            if not t["status"].startswith("skip")
+        ]
+    else:
+        to_run = list(result["run_order"])
+
+    if only:
+        only_set = set(only)
+        to_run = [n for n in to_run if n in only_set]
+
+    if not to_run:
+        raise typer.Exit(code=0)
+
+    failed: list[str] = []
+    for name in to_run:
+        node = _DAG_BY_NAME.get(name)
+        if node is None:
+            typer.echo(f"Unknown test: {name}", err=True)
+            failed.append(name)
+            continue
+        try:
+            _run_script(name, root / node.script)
+        except typer.Exit:
+            failed.append(name)
+
+    if failed:
+        typer.echo(f"\n{len(failed)} test(s) failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"\n{len(to_run)} test(s) completed.")
+
+
 @app.command()
 def refresh(
     sample: Optional[int] = typer.Option(None, help="Limit to N companies for each stage (smoke test: --sample 1)"),
@@ -234,17 +316,8 @@ def refresh(
     if backend not in _valid_backends:
         raise typer.BadParameter(f"backend must be one of {_valid_backends}, got {backend!r}", param_hint="'--backend'")
 
-    import subprocess
-
     root = Path(__file__).parent
     analysis = root / "03_Analysis"
-
-    def _run_script(label: str, script: Path) -> None:
-        typer.echo(f"\n--- {label} ---")
-        result = subprocess.run([sys.executable, str(script)], cwd=str(root))
-        if result.returncode != 0:
-            typer.echo(f"ERROR: {label} exited with code {result.returncode}", err=True)
-            raise typer.Exit(code=result.returncode)
 
     from src.pipeline import run_pipeline
 
@@ -323,6 +396,288 @@ def serve(
         typer.echo("uvicorn not installed. Run: uv sync", err=True)
         raise typer.Exit(code=1)
     uvicorn.run("app:app", host=host, port=port, reload=reload)
+
+
+@app.command()
+def queue(
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter: pending | reviewed"),
+) -> None:
+    """Show the report review queue."""
+    from src.review import list_queue, get_counts
+
+    counts = get_counts()
+    typer.echo(
+        f"\nREVIEW QUEUE  "
+        f"pending={counts['pending']}  "
+        f"visible_free={counts['visible_free']}  "
+        f"visible_paid={counts['visible_paid']}  "
+        f"hidden={counts['hidden']}"
+    )
+
+    rows = list_queue(status)
+    if not rows:
+        typer.echo("  (empty)")
+        return
+
+    typer.echo(
+        f"\n{'CODE':<10} {'NAME':<20} {'STATUS':<10} {'VIS':<4} {'TIER':<6} "
+        f"{'ASSESSMENT':<17} {'QUEUED':<12} {'NOTES'}"
+    )
+    typer.echo("─" * 96)
+    for r in rows:
+        typer.echo(
+            f"{r['corp_code']:<10} "
+            f"{(r['corp_name'] or '—')[:20]:<20} "
+            f"{r['status']:<10} "
+            f"{'Y' if r['visible'] else 'N':<4} "
+            f"{(r['tier'] or '—'):<6} "
+            f"{(r['flag_assessment'] or '—'):<17} "
+            f"{r['queued_at'][:10]:<12} "
+            f"{r['notes'] or ''}"
+        )
+
+
+@app.command()
+def surface(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code"),
+    tier: str = typer.Option(..., "--tier", "-t", help="Tier: free | paid"),
+    assessment: Optional[str] = typer.Option(
+        None, "--assessment", "-a",
+        help="Flag assessment: true_positive | false_positive | false_negative | clean_confirmed",
+    ),
+    notes: str = typer.Option("", "--notes", "-n", help="Optional reviewer notes"),
+) -> None:
+    """Make a report visible at the given tier (mark as reviewed + surfaced)."""
+    corp_code = corp_code.strip().zfill(8)
+    if tier not in ("free", "paid"):
+        raise typer.BadParameter(f"tier must be 'free' or 'paid', got {tier!r}", param_hint="'--tier'")
+
+    from src.review import surface as _surface
+    try:
+        updated = _surface(corp_code, tier, assessment=assessment, notes=notes)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    if not updated:
+        typer.echo(
+            f"corp_code {corp_code} not found in queue. "
+            "Run 'krff report <corp_code>' first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    parts = [f"Surfaced {corp_code} → tier={tier}"]
+    if assessment:
+        parts.append(f"assessment={assessment}")
+    typer.echo("  ".join(parts))
+
+
+@app.command()
+def hide(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code"),
+    assessment: Optional[str] = typer.Option(
+        None, "--assessment", "-a",
+        help="Flag assessment: true_positive | false_positive | false_negative | clean_confirmed",
+    ),
+    notes: str = typer.Option("", "--notes", "-n", help="Optional reason"),
+) -> None:
+    """Mark a report as reviewed but hidden (will not be served on any tier)."""
+    corp_code = corp_code.strip().zfill(8)
+
+    from src.review import hide as _hide
+    try:
+        updated = _hide(corp_code, assessment=assessment, notes=notes)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    if not updated:
+        typer.echo(
+            f"corp_code {corp_code} not found in queue. "
+            "Run 'krff report <corp_code>' first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    parts = [f"Hidden {corp_code}"]
+    if assessment:
+        parts.append(f"assessment={assessment}")
+    typer.echo("  ".join(parts))
+
+
+@app.command(name="assess")
+def assess_cmd(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code"),
+    assessment: str = typer.Option(
+        ..., "--assessment", "-a",
+        help="true_positive | false_positive | false_negative | clean_confirmed",
+    ),
+    notes: str = typer.Option("", "--notes", "-n", help="Optional notes"),
+) -> None:
+    """Record a methodology verdict without changing visibility."""
+    corp_code = corp_code.strip().zfill(8)
+
+    from src.review import assess as _assess
+    try:
+        updated = _assess(corp_code, assessment, notes=notes)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    if not updated:
+        typer.echo(
+            f"corp_code {corp_code} not found in queue. "
+            "Run 'krff report <corp_code>' first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    typer.echo(f"Assessed {corp_code} → {assessment}")
+
+
+@app.command()
+def review(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code"),
+) -> None:
+    """Open a generated report in the default browser for review."""
+    import webbrowser
+
+    corp_code = corp_code.strip().zfill(8)
+    report_path = _ANALYSIS_DIR / "reports" / f"{corp_code}_report.html"
+    if not report_path.exists():
+        typer.echo(
+            f"Report not found: {report_path}\nRun 'krff report {corp_code}' first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    url = report_path.as_uri()
+    typer.echo(f"Opening {report_path.name} in browser...")
+    webbrowser.open(url)
+
+
+@app.command()
+def requeue(
+    corp_code: str = typer.Argument(..., help="DART 8-digit corp code"),
+) -> None:
+    """Reset a reviewed-hidden report back to pending for re-review."""
+    corp_code = corp_code.strip().zfill(8)
+    from src.review import queue_add
+
+    queue_add(corp_code, force=True)
+    typer.echo(f"Reset {corp_code} to pending. Run 'krff queue' to confirm.")
+
+
+@app.command(name="seed-queue")
+def seed_queue_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be inserted without writing"),
+) -> None:
+    """Pre-populate the review queue with all companies from corp_ticker_map.parquet."""
+    import pandas as pd
+    from src.review import seed_queue
+
+    cmap_path = _ANALYSIS_DIR.parent / "01_Data" / "processed" / "corp_ticker_map.parquet"
+    if not cmap_path.exists():
+        typer.echo(f"Error: {cmap_path} not found. Run 'krff run' first.", err=True)
+        raise typer.Exit(code=1)
+
+    df = pd.read_parquet(cmap_path, columns=["corp_code", "corp_name"])
+    df["corp_code"] = df["corp_code"].astype(str).str.zfill(8)
+    corps = list(df.drop_duplicates("corp_code").itertuples(index=False, name=None))
+
+    if dry_run:
+        typer.echo(f"Would seed {len(corps)} companies into review queue.")
+        return
+
+    inserted, skipped = seed_queue(corps)
+    typer.echo(f"Seeded queue: {inserted} inserted, {skipped} already present.")
+
+
+@app.command()
+def batch_report(
+    top: Optional[int] = typer.Option(None, "--top", help="Process only the top N companies by M-score"),
+    workers: int = typer.Option(4, "--workers", help="Parallel worker threads"),
+    skip_claude: bool = typer.Option(False, "--skip-claude", help="Skip Claude API synthesis"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would run without generating"),
+    force: bool = typer.Option(False, "--force", help="Re-queue even if already queued"),
+) -> None:
+    """Generate reports for all flagged companies in parallel and auto-queue each."""
+    import concurrent.futures
+
+    import pandas as pd
+
+    from src.report import generate_report
+    from src.review import list_queue, queue_add
+
+    BENEISH_THRESHOLD = -1.78
+
+    if not _DEFAULT_PARQUET.exists():
+        typer.echo(f"Error: {_DEFAULT_PARQUET} not found. Run 'krff run' first.", err=True)
+        raise typer.Exit(code=1)
+
+    # Build flagged corps sorted by m_score desc
+    df = pd.read_parquet(_DEFAULT_PARQUET, columns=["corp_code", "m_score"])
+    flagged = (
+        df[df["m_score"] > BENEISH_THRESHOLD]
+        .copy()
+        .assign(corp_code=lambda x: x["corp_code"].astype(str).str.zfill(8))
+        .sort_values("m_score", ascending=False)
+        .drop_duplicates("corp_code")
+    )
+    if top is not None:
+        flagged = flagged.head(top)
+
+    # Build corp_code → corp_name lookup
+    corp_name_map: dict[str, str] = {}
+    cmap_path = _ANALYSIS_DIR.parent / "01_Data" / "processed" / "corp_ticker_map.parquet"
+    if cmap_path.exists():
+        cmap = pd.read_parquet(cmap_path, columns=["corp_code", "corp_name"])
+        cmap["corp_code"] = cmap["corp_code"].astype(str).str.zfill(8)
+        corp_name_map = dict(zip(cmap["corp_code"], cmap["corp_name"]))
+
+    # Skip already-queued if not --force
+    targets = list(flagged["corp_code"])
+    if not force:
+        queued_codes = {r["corp_code"] for r in list_queue()}
+        targets = [c for c in targets if c not in queued_codes]
+
+    if dry_run:
+        typer.echo(f"Would generate {len(targets)} report(s):")
+        for code in targets:
+            typer.echo(f"  {code}  {corp_name_map.get(code, '—')}")
+        return
+
+    if not targets:
+        typer.echo("Nothing to generate (all already queued; use --force to regenerate).")
+        return
+
+    total = len(targets)
+    typer.echo(f"Generating {total} report(s) with {workers} workers...")
+
+    reports_dir = _ANALYSIS_DIR / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    results: list[str] = []
+    lock = __import__("threading").Lock()
+
+    def _generate_one(i_code: tuple[int, str]) -> None:
+        i, corp_code = i_code
+        corp_name = corp_name_map.get(corp_code, "")
+        out_path = reports_dir / f"{corp_code}_report.html"
+        try:
+            generate_report(corp_code=corp_code, output_path=out_path, skip_claude=skip_claude)
+            queue_add(corp_code, corp_name, force=force)
+            msg = f"[{i}/{total}] {corp_code} {corp_name} — done"
+        except Exception as exc:
+            msg = f"[{i}/{total}] {corp_code} {corp_name} — ERROR: {exc}"
+        with lock:
+            results.append(msg)
+            typer.echo(msg)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        executor.map(_generate_one, enumerate(targets, start=1))
+
+    errors = sum(1 for r in results if "ERROR" in r)
+    typer.echo(f"\nDone. {total - errors}/{total} succeeded.")
+    if errors:
+        raise typer.Exit(code=1)
 
 
 @app.command()
