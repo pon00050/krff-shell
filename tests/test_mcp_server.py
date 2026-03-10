@@ -5,8 +5,12 @@ Run with:
 
 Note: these tests require fastmcp to be installed (uv sync --extra dev).
 They are skipped automatically if fastmcp is not available.
+
+Data-dependent tests are skipped when the relevant parquet files are absent
+(CI runners do not have the gitignored 01_Data/ directory).
 """
 import json
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +18,25 @@ pytest.importorskip("fastmcp", reason="fastmcp not installed — run: uv sync")
 
 from fastmcp.client import Client  # noqa: E402
 from src.mcp_server import mcp_server  # noqa: E402
+from src.db import parquet_path  # noqa: E402
+
+# ── Data availability flags ───────────────────────────────────────────────────
+_HAS_CORP_MAP = parquet_path("corp_ticker_map").exists()
+_HAS_BENEISH = parquet_path("beneish_scores").exists()
+_HAS_PRICE = parquet_path("price_volume").exists()
+
+_skip_no_corp_map = pytest.mark.skipif(
+    not _HAS_CORP_MAP,
+    reason="corp_ticker_map.parquet not present — run pipeline first",
+)
+_skip_no_beneish = pytest.mark.skipif(
+    not _HAS_BENEISH,
+    reason="beneish_scores.parquet not present — run pipeline first",
+)
+_skip_no_price = pytest.mark.skipif(
+    not _HAS_PRICE,
+    reason="price_volume.parquet not present — run pipeline first",
+)
 
 
 @pytest.fixture
@@ -41,6 +64,7 @@ async def test_tools_registered(mcp_client):
     assert expected.issubset(names), f"Missing tools: {expected - names}"
 
 
+@_skip_no_corp_map
 async def test_lookup_corp_code_returns_list(mcp_client):
     """lookup_corp_code must return a JSON array."""
     result = await mcp_client.call_tool("lookup_corp_code", {"query_str": "피씨엘"})
@@ -48,17 +72,18 @@ async def test_lookup_corp_code_returns_list(mcp_client):
     assert isinstance(data, list)
 
 
+@_skip_no_corp_map
 async def test_lookup_corp_code_ticker(mcp_client):
     """lookup_corp_code must resolve ticker '241820' to 피씨엘."""
     result = await mcp_client.call_tool("lookup_corp_code", {"query_str": "241820"})
     data = json.loads(result.content[0].text)
     assert isinstance(data, list)
-    # If corp_ticker_map has this entry, verify the corp_code
     if data:
         assert "corp_code" in data[0]
         assert "match_type" in data[0]
 
 
+@_skip_no_beneish
 async def test_search_flagged_companies_envelope(mcp_client):
     """search_flagged_companies must return a pagination envelope."""
     result = await mcp_client.call_tool("search_flagged_companies", {"limit": 5})
@@ -71,6 +96,7 @@ async def test_search_flagged_companies_envelope(mcp_client):
     assert len(data["results"]) <= 5
 
 
+@_skip_no_beneish
 async def test_search_flagged_companies_sorted(mcp_client):
     """Results must be sorted descending by m_score."""
     result = await mcp_client.call_tool("search_flagged_companies", {"limit": 10})
@@ -79,6 +105,7 @@ async def test_search_flagged_companies_sorted(mcp_client):
     assert scores == sorted(scores, reverse=True), "Results not sorted by m_score descending"
 
 
+@_skip_no_beneish
 async def test_no_nan_in_beneish_output(mcp_client):
     """NaN must not appear in JSON output — would be invalid JSON."""
     result = await mcp_client.call_tool(
@@ -100,6 +127,7 @@ async def test_get_company_summary_structure(mcp_client):
         assert key in data, f"Missing key: {key}"
 
 
+@_skip_no_price
 async def test_get_price_volume_pagination_envelope(mcp_client):
     """get_price_volume must return a pagination envelope."""
     result = await mcp_client.call_tool(
