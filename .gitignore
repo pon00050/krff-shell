@@ -7,6 +7,7 @@
 
 # Analysis outputs
 03_Analysis/*.csv
+03_Analysis/*.db
 03_Analysis/cb_bw_timelines/
 03_Analysis/officer_network/
 # Generated per-company forensic reports
@@ -44,12 +45,18 @@ Thumbs.db
 # Documentation cache
 docs_cache/
 
+# Website — local only (not yet public)
+web/
+deploy/
+mockup.html
+
 # Private — local only
 PIPELINE_MAP.md
 00_Reference/
 KNOWN_ISSUES.md
 CHANGELOG.md
 PRODUCT_VISION.md
+BUSINESS_ROADMAP.md
 03_Analysis/company_dives/
 03_Analysis/statistical_tests/
 03_Analysis/NETWORK_FINDINGS.md
