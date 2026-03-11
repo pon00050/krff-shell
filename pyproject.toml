@@ -43,6 +43,8 @@ dependencies = [
     "jinja2>=3.1.0",
     "cachetools>=5.3.0",
     "fastmcp>=3.1.0",
+    "exchange-calendars>=4.13.2",
+    "holidays>=0.92",
 ]
 
 [project.scripts]
