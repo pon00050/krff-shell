@@ -69,3 +69,6 @@ BUGS.md
 
 # PyVis/Marimo JS vendor artifacts
 lib/
+
+# Claude Code batch-edit flag (suppresses per-edit test hook; never commit)
+.batch-edits
