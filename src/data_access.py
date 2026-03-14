@@ -27,6 +27,12 @@ CB_BW_CSV = ANALYSIS_DIR / "cb_bw_summary.csv"
 TIMING_CSV = ANALYSIS_DIR / "timing_anomalies.csv"
 NETWORK_CSV = ANALYSIS_DIR / "officer_network" / "centrality_report.csv"
 
+# JFIA catalog — sourced from sibling jfia-forensic project (gitignored raw data)
+# Falls back to checking directly under PROJECT_ROOT if the sibling path is absent
+_JFIA_CATALOG_PATH: Path = (
+    PROJECT_ROOT.parent / "jfia-forensic" / "data" / "raw" / "jfia_catalog.json"
+)
+
 
 def load_parquet(
     name: str,
@@ -87,6 +93,49 @@ def load_company_name(
     return corp_code
 
 
+def load_jfia_catalog(catalog_path: Path | None = None) -> "JFIACatalog | None":
+    """
+    Load the JFIA article catalog JSON.
+
+    Returns a JFIACatalog instance, or None if the file is absent.
+    Uses _JFIA_CATALOG_PATH by default (sibling jfia-forensic project).
+    """
+    path = catalog_path or _JFIA_CATALOG_PATH
+    if not path.exists():
+        log.debug("JFIA catalog not found at %s", path)
+        return None
+    try:
+        # Lazy import — jfia-forensic is an optional sibling project
+        from jfia_forensic.catalog import JFIACatalog
+        return JFIACatalog.load(path)
+    except ImportError:
+        log.warning("jfia-forensic not installed — install it with: pip install jfia-forensic")
+        return None
+    except Exception as exc:
+        log.warning("Error loading JFIA catalog: %s", exc)
+        return None
+
+
+# Lazy singleton — loaded once per process
+_JFIA_CATALOG_SINGLETON: "JFIACatalog | None | _SENTINEL" = None
+
+
+class _SENTINEL:
+    """Sentinel to distinguish 'not loaded yet' from 'loaded but None'."""
+
+
+_jfia_loaded = False
+
+
+def get_jfia_catalog() -> "JFIACatalog | None":
+    """Return a cached JFIACatalog singleton (lazy-loaded on first call)."""
+    global _jfia_loaded, _JFIA_CATALOG_SINGLETON
+    if not _jfia_loaded:
+        _JFIA_CATALOG_SINGLETON = load_jfia_catalog()
+        _jfia_loaded = True
+    return _JFIA_CATALOG_SINGLETON
+
+
 def load_officer_network(
     corp_code: str,
     network_csv: Path | None = None,
@@ -116,8 +165,11 @@ __all__ = [
     "load_csv",
     "load_company_name",
     "load_officer_network",
+    "load_jfia_catalog",
+    "get_jfia_catalog",
     "ANALYSIS_DIR",
     "CB_BW_CSV",
     "TIMING_CSV",
     "NETWORK_CSV",
+    "_JFIA_CATALOG_PATH",
 ]

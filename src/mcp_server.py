@@ -14,6 +14,7 @@ Tools:
     get_major_holders         — 5%+ block-holding filings (DART 대량보유)
     get_officer_network       — cross-company officer network centrality
     search_flagged_companies  — ranked list of companies by Beneish M-Score
+    search_jfia_literature    — search 469 JFIA forensic accounting papers
 
 Usage:
     From app.py:
@@ -38,6 +39,7 @@ from src.data_access import (
     CB_BW_CSV,
     NETWORK_CSV,
     TIMING_CSV,
+    get_jfia_catalog,
     load_csv,
     load_officer_network,
     load_parquet,
@@ -597,6 +599,70 @@ async def search_flagged_companies(
     all_records = await anyio.to_thread.run_sync(_search)
     envelope = paginate(all_records, limit=limit, offset=offset)
     return json.dumps(envelope, ensure_ascii=False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool 11 — search_jfia_literature
+# ─────────────────────────────────────────────────────────────────────────────
+
+@mcp_server.tool
+async def search_jfia_literature(
+    query: Annotated[str, Field(
+        description=(
+            "Fraud scheme, signal, or topic to search — e.g. 'earnings management', "
+            "'convertible bond manipulation', 'Beneish M-Score', 'disclosure timing'. "
+            "Keyword match on title, abstract, and keywords of 469 JFIA papers (2009–2025)."
+        )
+    )],
+    limit: Annotated[int, Field(description="Max results (1–10).", ge=1, le=10)] = 5,
+) -> str:
+    """
+    Search 469 JFIA (Journal of Forensic & Investigative Accounting) papers for
+    literature relevant to a fraud signal or detection scheme.
+
+    Uses keyword matching on article title, abstract, and keywords. Returns the
+    most relevant papers ranked by relevance score. If the jfia-forensic package is
+    not installed or the catalog file is absent, returns an empty list gracefully.
+
+    Each result contains:
+        title            — article title
+        authors          — list of author names
+        volume_issue     — e.g. "Vol 1, Iss 1 (2009 Q1)"
+        abstract_snippet — first 300 characters of the abstract
+        keywords         — list of author-assigned keywords
+        pdf_url          — direct PDF link on nacva.com S3
+
+    Catalog sourced from: https://github.com/pon00050/jfia-catalog
+    Coverage: 469 articles, 46 issues, 2009–2025. 363 articles have abstracts.
+    """
+    def _sync() -> list[dict]:
+        catalog = get_jfia_catalog()
+        if catalog is None:
+            return []
+        try:
+            results = catalog.search(query, limit=limit)
+        except ValueError:
+            return []
+        return [
+            {
+                "title": a.title,
+                "authors": a.authors,
+                "volume_issue": (
+                    f"Vol {a.volume}, Iss {a.issue} ({a.period})"
+                    if a.volume and a.issue
+                    else "Unknown issue"
+                ),
+                "abstract_snippet": (
+                    a.abstract[:300] + "..." if len(a.abstract) > 300 else a.abstract
+                ),
+                "keywords": a.keywords,
+                "pdf_url": a.pdf_url,
+            }
+            for a in results
+        ]
+
+    result = await anyio.to_thread.run_sync(_sync)
+    return json.dumps(sanitize_for_json(result), ensure_ascii=False)
 
 
 __all__ = ["mcp_server"]

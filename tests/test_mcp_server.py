@@ -1,4 +1,4 @@
-"""Tests for MCP tool registration and output correctness.
+"""Tests for MCP tool registration and output correctness — includes tool #11: search_jfia_literature.
 
 Run with:
     uv run python -m pytest tests/test_mcp_server.py -v --asyncio-mode=auto
@@ -19,11 +19,13 @@ pytest.importorskip("fastmcp", reason="fastmcp not installed — run: uv sync")
 from fastmcp.client import Client  # noqa: E402
 from src.mcp_server import mcp_server  # noqa: E402
 from src.db import parquet_path  # noqa: E402
+from src.data_access import _JFIA_CATALOG_PATH  # noqa: E402
 
 # ── Data availability flags ───────────────────────────────────────────────────
 _HAS_CORP_MAP = parquet_path("corp_ticker_map").exists()
 _HAS_BENEISH = parquet_path("beneish_scores").exists()
 _HAS_PRICE = parquet_path("price_volume").exists()
+_HAS_JFIA = _JFIA_CATALOG_PATH.exists()
 
 _skip_no_corp_map = pytest.mark.skipif(
     not _HAS_CORP_MAP,
@@ -37,6 +39,10 @@ _skip_no_price = pytest.mark.skipif(
     not _HAS_PRICE,
     reason="price_volume.parquet not present — run pipeline first",
 )
+_skip_no_jfia = pytest.mark.skipif(
+    not _HAS_JFIA,
+    reason="JFIA catalog not found — clone jfia-forensic repo alongside kr-forensic-finance",
+)
 
 
 @pytest.fixture
@@ -46,7 +52,7 @@ async def mcp_client():
 
 
 async def test_tools_registered(mcp_client):
-    """All 10 tools must appear in the tool list."""
+    """All 11 tools must appear in the tool list."""
     tools = await mcp_client.list_tools()
     names = {t.name for t in tools}
     expected = {
@@ -60,6 +66,7 @@ async def test_tools_registered(mcp_client):
         "get_major_holders",
         "get_officer_network",
         "search_flagged_companies",
+        "search_jfia_literature",
     }
     assert expected.issubset(names), f"Missing tools: {expected - names}"
 
@@ -143,3 +150,44 @@ async def test_get_price_volume_pagination_envelope(mcp_client):
     assert "results" in data
     assert "total_count" in data
     assert "has_more" in data
+
+
+# ── Tool 11: search_jfia_literature ──────────────────────────────────────────
+
+async def test_search_jfia_literature_no_catalog_graceful(mcp_client, monkeypatch):
+    """If JFIA catalog is absent, tool returns empty list (not an error)."""
+    import src.data_access as da
+    monkeypatch.setattr(da, "_jfia_loaded", False)
+    monkeypatch.setattr(da, "_JFIA_CATALOG_SINGLETON", None)
+    monkeypatch.setattr(da, "_JFIA_CATALOG_PATH", Path("/nonexistent/jfia_catalog.json"))
+    result = await mcp_client.call_tool("search_jfia_literature", {"query": "earnings"})
+    data = json.loads(result.content[0].text)
+    assert isinstance(data, list)
+    assert data == []
+
+
+@_skip_no_jfia
+async def test_search_jfia_literature_returns_json(mcp_client):
+    """Valid query returns JSON list with expected fields."""
+    result = await mcp_client.call_tool(
+        "search_jfia_literature", {"query": "earnings management"}
+    )
+    data = json.loads(result.content[0].text)
+    assert isinstance(data, list)
+    if data:
+        first = data[0]
+        assert "title" in first
+        assert "authors" in first
+        assert "pdf_url" in first
+        assert "abstract_snippet" in first
+
+
+@_skip_no_jfia
+async def test_search_jfia_literature_limit_respected(mcp_client):
+    """limit=2 returns at most 2 results."""
+    result = await mcp_client.call_tool(
+        "search_jfia_literature", {"query": "fraud detection", "limit": 2}
+    )
+    data = json.loads(result.content[0].text)
+    assert isinstance(data, list)
+    assert len(data) <= 2
