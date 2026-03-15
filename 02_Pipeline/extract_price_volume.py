@@ -56,7 +56,7 @@ SLEEP_DEFAULT = 0.3
 def _fetch_ohlcv_pykrx(ticker: str, start_dt: str, end_dt: str) -> pd.DataFrame:
     """Fetch one ticker window via pykrx. start/end are YYYYMMDD strings."""
     from pykrx import stock as krx_stock
-    df = krx_stock.get_market_ohlcv_by_date(start_dt, end_dt, ticker)
+    df = krx_stock.get_market_ohlcv_by_date(start_dt, end_dt, ticker, adjusted=True)
     if df.empty:
         return pd.DataFrame()
     df = df.reset_index()
