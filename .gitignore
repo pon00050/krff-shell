@@ -72,3 +72,12 @@ lib/
 
 # Claude Code batch-edit flag (suppresses per-edit test hook; never commit)
 .batch-edits
+
+# Knowledge layer (private thinking — never commit)
+knowledge/
+
+# Obsidian vault config (local only)
+.obsidian/
+
+# Business outreach (moved to forensic-accounting-toolkit/business/)
+outreach/
