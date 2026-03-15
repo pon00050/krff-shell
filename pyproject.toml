@@ -18,7 +18,7 @@ classifiers = [
 dependencies = [
     "anthropic>=0.40.0",
     "opendartreader",
-    "pykrx",
+    "pykrx>=1.2.0",
     "pandas",
     "pyarrow",
     "marimo",
