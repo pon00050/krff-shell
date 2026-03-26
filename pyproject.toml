@@ -48,6 +48,7 @@ dependencies = [
     "kr-trading-calendar",
     "kr-forensic-core",
     "kr-dart-pipeline",
+    "kr-anomaly-scoring",
 ]
 
 [project.scripts]
@@ -82,6 +83,7 @@ compile-bytecode = false
 kr-trading-calendar = { path = "../kr-trading-calendar" }
 kr-forensic-core = { path = "../kr-forensic-core" }
 kr-dart-pipeline = { path = "../kr-dart-pipeline" }
+kr-anomaly-scoring = { path = "../kr-anomaly-scoring" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
