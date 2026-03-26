@@ -1,12 +1,10 @@
 """
-conftest.py — pytest configuration for kr-forensic-finance tests.
+conftest.py — pytest configuration for krff-shell tests.
 
-Adds 02_Pipeline to sys.path so test files can import extract_dart,
-transform, etc. directly without installing the package.
+Imports kr_dart_pipeline so its __init__ registers the package directory on
+sys.path. This lets test files use bare module names (import extract_dart,
+import transform, from pipeline import ...) that resolve to the canonical
+installed package rather than the stale pre-split 02_Pipeline/ copy.
 """
 
-import sys
-from pathlib import Path
-
-# Allow tests to import pipeline modules by name (extract_dart, transform, etc.)
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "02_Pipeline"))
+import kr_dart_pipeline  # noqa: F401 — registers kr_dart_pipeline/ on sys.path

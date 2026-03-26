@@ -581,8 +581,8 @@ async def search_flagged_companies(
     path_str = to_duckdb_path(path)
 
     def _search() -> list[dict]:
-        where_parts = ["m_score IS NOT NULL", f"m_score > {min_m_score}"]
-        params: list = [path_str]
+        where_parts = ["m_score IS NOT NULL", "m_score > ?"]
+        params: list = [path_str, min_m_score]
         if year is not None:
             where_parts.append("year = ?")
             params.append(year)
