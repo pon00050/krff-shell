@@ -10,7 +10,7 @@ Part of the Korean forensic accounting toolkit.
 - Hub: `../forensic-accounting-toolkit/` | [GitHub](https://github.com/pon00050/forensic-accounting-toolkit)
 - Task board: https://github.com/users/pon00050/projects/1
 - Role: Platform (integrates all foundation and analysis libraries)
-- Depends on: kr-company-registry, kr-trading-calendar, kr-beneish, kr-derivatives, jfia-forensic
+- Depends on: kr-trading-calendar, kr-forensic-core, kr-dart-pipeline, kr-anomaly-scoring, kr-stat-tests
 - Consumed by: end users (CLI, FastAPI, MCP server)
 
 ---
