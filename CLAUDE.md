@@ -22,13 +22,13 @@ Part of the Korean forensic accounting toolkit.
 uv sync --extra dev
 
 # Run tests
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run a single test
-python -m pytest tests/test_pipeline_invariants.py::test_function_name -v
+uv run pytest tests/test_pipeline_invariants.py::test_function_name -v
 
 # Full pipeline (smoke test)
-python 02_Pipeline/pipeline.py --market KOSDAQ --start 2021 --end 2023 --sample 5 --sleep 0.1
+uv run python 02_Pipeline/pipeline.py --market KOSDAQ --start 2021 --end 2023 --sample 5 --sleep 0.1
 
 # Re-run everything including analysis
 krff refresh --sample 5
@@ -72,6 +72,8 @@ krff audit --verbose
 | `extract_bondholder_register.py:91` — pagination missing | Only fetches first page of CB filings (>100 not handled) | Unblocked — low priority |
 | 3 standalone extractors not wired into `pipeline.py` | `extract_bondholder_register`, `extract_depreciation_schedule`, `extract_revenue_schedule` produce parquets but can't be triggered via `krff refresh` | By design — standalone scripts |
 | WICS sector data has no historical snapshots (`extract_dart.py:157`) | WICS serves recent dates only; joins to historical financials use current sector | By design — upstream limitation |
+| `tests/conftest.py` appends kr_dart_pipeline dir to sys.path for bare `import transform` | `test_pipeline_invariants.py` uses bare module names (4 locations); updating to absolute imports requires test refactor | Unblocked — low priority |
+| `02_Pipeline/` and `03_Analysis/` are monolith copies of kr-dart-pipeline / kr-anomaly-scoring | Needed for `krff/pipeline.py` proxy and test bare imports; divergence from canonical packages is a silent risk | Deferred — remove after test refactor |
 
 ---
 

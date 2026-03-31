@@ -10,13 +10,13 @@ import re
 
 PRIVATE_PATTERNS = [
     "KNOWN_ISSUES.md",
-    "CHANGELOG.md",
+    "CHANGELOG.md",      # Human-controlled — AI should not auto-commit changelog entries
     "PRODUCT_VISION.md",
     "company_dives",
     "NETWORK_FINDINGS.md",
     "00_Reference",
     "PHASE_1_5_PLAN.md",
-    "CLAUDE.md",
+    # NOTE: CLAUDE.md intentionally excluded — agents must be able to update and stage it
 ]
 
 def main():

@@ -1,4 +1,4 @@
-"""src/_paths.py — Canonical project path constants."""
+"""krff/_paths.py — Canonical project path constants."""
 
 from __future__ import annotations
 
