@@ -8,6 +8,26 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: pon00050/kr-trading-calendar
+          path: ../kr-trading-calendar
+      - uses: actions/checkout@v4
+        with:
+          repository: pon00050/kr-forensic-core
+          path: ../kr-forensic-core
+      - uses: actions/checkout@v4
+        with:
+          repository: pon00050/kr-dart-pipeline
+          path: ../kr-dart-pipeline
+      - uses: actions/checkout@v4
+        with:
+          repository: pon00050/kr-anomaly-scoring
+          path: ../kr-anomaly-scoring
+      - uses: actions/checkout@v4
+        with:
+          repository: pon00050/kr-stat-tests
+          path: ../kr-stat-tests
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
