@@ -95,4 +95,4 @@ cli.py (krff)     →  krff/* thin wrappers
 
 ---
 
-**Domain knowledge** (regulatory analysis, buyer research, competitive intelligence, legal compliance) belongs in the hub vault: `forensic-accounting-toolkit/knowledge/`. Engineering docs (API patterns, test strategies, run logs) stay here. After creating a new domain knowledge note, copy it to the hub with gold-standard frontmatter. See hub `CLAUDE.md` §Knowledge Vault for the frontmatter contract.
+**Working notes** (regulatory analysis, legal compliance research, or anything else not appropriate for this public repo) belong in the gitignored working directory of the coordination hub. Engineering docs (API patterns, test strategies, run logs) stay here.
